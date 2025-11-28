@@ -128,11 +128,11 @@ class CustomController(KesslerController):
         ship_thrust = ctrl.Consequent(np.arange(0, 1.0, 0.05), 'ship_thrust') 
 
         # large always has a later range than small
-        asteroid_distance['S'] = fuzz.zmf(asteroid_distance.universe, 0, 200)
+        asteroid_distance['S'] = fuzz.trimf(asteroid_distance.universe, [0, 0, 200])
         asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [175, 400, 750])
         asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, 500, 1000)
 
-        asteroid_vel['S'] = fuzz.zmf(asteroid_vel.universe, 0, 70)
+        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [0, 0, 70])
         asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [50, 100, 150])
         asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 100, 200)
 
@@ -294,7 +294,7 @@ class CustomController(KesslerController):
         y_diff = closest_asteroid["aster"]["position"][1] - ship_pos_y
         angle_from_ship_to_asteroid = math.atan2(y_diff, x_diff)
         angle_diff = angle_from_ship_to_asteroid - ((math.pi/180)*ship_state["heading"])
-        angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
+        angle_diff = (angle_diff + math.pi) % (2 * math.pi) - math.pi
 
         # if facing asteroid and distance is small, thrust backwards fast
         if abs(angle_diff) < math.pi/3 and asteroid_distance < 250:
