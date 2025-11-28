@@ -124,33 +124,61 @@ class CustomController(KesslerController):
         
         # controller setup logic for thrust
         asteroid_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'asteroid_distance') # 1000 as max window size is 1000
-        asteroid_vel = ctrl.Antecedent(np.arange(0, 800, 5), 'asteroid_vel') # 800 set bc bullet speed is 800 
-        ship_thrust = ctrl.Consequent(np.arange(0, 1.0, 0.05), 'ship_thrust') 
+        asteroid_vel = ctrl.Antecedent(np.arange(0, 200, 5), 'asteroid_vel') # 200 set bc mostly read values aroind 100
+        theta_diff = ctrl.Antecedent(np.arange(-math.pi, math.pi, 0.1), 'theta_diff') # normalized range
+        ship_thrust = ctrl.Consequent(np.arange(-1.0, 1.0, 0.05), 'ship_thrust') 
 
         # large always has a later range than small
-        asteroid_distance['S'] = fuzz.zmf(asteroid_distance.universe, 0, 300)
-        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [150, 400, 750])
-        asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, 500, 1000)
+        asteroid_distance['S'] = fuzz.trimf(asteroid_distance.universe, [0, 0, 200])
+        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [175, 400, 750])
+        asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, 600, 1000)
 
-        asteroid_vel['S'] = fuzz.zmf(asteroid_vel.universe, 0, 200)
-        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [100, 300, 600])
-        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 400, 800)
-
-        ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [0, 0, 0.3])
-        ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [0.2, 0.5, 0.8])
-        ship_thrust['H'] = fuzz.trimf(ship_thrust.universe, [0.6, 1.0, 1.0])
-
-        rule1_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'], ship_thrust['H'])
-        rule2_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'], ship_thrust['M'])
-        rule3_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'], ship_thrust['M'])
+        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [0, 0, 70])
+        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [50, 100, 150])
+        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 100, 200)
         
-        rule4_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'], ship_thrust['M'])
-        rule5_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'], ship_thrust['M'])
-        rule6_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'], ship_thrust['L'])
+        theta_diff['S'] = fuzz.trimf(theta_diff.universe, [-math.pi/3, 0, math.pi/3])
+        theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [math.pi/4, math.pi/2, 3*math.pi/4])
+        theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [-3*math.pi/4, -math.pi/2, -math.pi/4])
+        theta_diff['L'] = np.fmax(
+                fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3),
+                fuzz.smf(theta_diff.universe,  2*math.pi/3,  math.pi)
+            )
+
+        ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-1.0, -1.0, -0.5])
+        ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-0.8, -0.5, -0.2])
+        ship_thrust['BL'] = fuzz.trimf(ship_thrust.universe, [-0.3, 0.0, 0.0])
+        ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [-0.1, 0, 0.1])
+        ship_thrust['FL'] = fuzz.trimf(ship_thrust.universe, [0, 0, 0.3])
+        ship_thrust['FM'] = fuzz.trimf(ship_thrust.universe, [0.2, 0.5, 0.8])
+        ship_thrust['FH'] = fuzz.trimf(ship_thrust.universe, [0.5, 1.0, 1.0])
+
+        rule1_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BH'])
+        rule2_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BM'])
+        rule3_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BM'])
         
-        rule7_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'], ship_thrust['M'])
-        rule8_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'], ship_thrust['L'])
-        rule9_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'], ship_thrust['L'])
+        rule4_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BM'])
+        rule5_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BM'])
+        rule6_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BL'])
+        
+        rule7_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BM'])
+        rule8_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BL'])
+        rule9_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BL'])
+        
+        rule10_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FH'])
+        rule11_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
+        rule12_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FM'])
+        
+        rule13_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
+        rule14_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
+        rule15_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
+        
+        rule16_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
+        rule17_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FL'])
+        rule18_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
+        
+        rule19_thrust = ctrl.Rule(theta_diff['PM'], ship_thrust['BL'])
+        rule20_thrust = ctrl.Rule(theta_diff['NM'], ship_thrust['BL'])
         
         self.thrust_movement = ctrl.ControlSystem()
         self.thrust_movement.addrule(rule1_thrust)
@@ -162,6 +190,18 @@ class CustomController(KesslerController):
         self.thrust_movement.addrule(rule7_thrust)
         self.thrust_movement.addrule(rule8_thrust)
         self.thrust_movement.addrule(rule9_thrust)
+        
+        self.thrust_movement.addrule(rule10_thrust)
+        self.thrust_movement.addrule(rule11_thrust)
+        self.thrust_movement.addrule(rule12_thrust)
+        self.thrust_movement.addrule(rule13_thrust)
+        self.thrust_movement.addrule(rule14_thrust)
+        self.thrust_movement.addrule(rule15_thrust)
+        self.thrust_movement.addrule(rule16_thrust)
+        self.thrust_movement.addrule(rule17_thrust)
+        self.thrust_movement.addrule(rule18_thrust)
+        self.thrust_movement.addrule(rule19_thrust)
+        self.thrust_movement.addrule(rule20_thrust)
         
         
 
@@ -224,6 +264,7 @@ class CustomController(KesslerController):
         cos_my_theta2 = math.cos(my_theta2)
         # Need the speeds of the asteroid and bullet. speed * time is distance to the intercept point
         asteroid_vel = math.sqrt(closest_asteroid["aster"]["velocity"][0]**2 + closest_asteroid["aster"]["velocity"][1]**2)
+        print("asteroid_vel: ", asteroid_vel)
         bullet_speed = 800 # Hard-coded bullet speed from bullet.py
         
         # Determinant of the quadratic formula b^2-4ac
@@ -268,7 +309,7 @@ class CustomController(KesslerController):
         shooting.compute()
         
         # Get the defuzzified outputs
-        turn_rate = shooting.output['ship_turn'] * 1.5
+        turn_rate = shooting.output['ship_turn'] * 3
         
         if shooting.output['ship_fire'] >= 0:
             fire = True
@@ -279,32 +320,23 @@ class CustomController(KesslerController):
         # thrust = 0.0
         
         # thrust controller
+        
+        # finds angle between ship's heading and ship to asteroid
+        x_diff = closest_asteroid["aster"]["position"][0] - ship_pos_x
+        y_diff = closest_asteroid["aster"]["position"][1] - ship_pos_y
+        ship_to_asteroid_theta = math.atan2(y_diff, x_diff)
+        theta_diff = ship_to_asteroid_theta - ((math.pi/180)*ship_state["heading"])
+        theta_diff = (theta_diff + math.pi) % (2 * math.pi) - math.pi
+        
         asteroid_distance = closest_asteroid["dist"]
         movement = ctrl.ControlSystemSimulation(self.thrust_movement, flush_after_run=1)
         movement.input['asteroid_distance'] = asteroid_distance
         movement.input['asteroid_vel'] = asteroid_vel
+        movement.input['theta_diff'] = theta_diff
         movement.compute()
         
         # gets magnitude of thrust
-        thrust_undirected = movement.output['ship_thrust']
-
-        # finds angle between ship's heading and ship to asteroid
-        x_diff = closest_asteroid["aster"]["position"][0] - ship_pos_x
-        y_diff = closest_asteroid["aster"]["position"][1] - ship_pos_y
-        angle_from_ship_to_asteroid = math.atan2(y_diff, x_diff)
-        angle_diff = angle_from_ship_to_asteroid - ((math.pi/180)*ship_state["heading"])
-        angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
-
-        # if facing asteroid and distance is small, thrust backwards fast
-        if abs(angle_diff) < math.pi/3 and asteroid_distance < 250:
-            thrust = -thrust_undirected * 300
-        # if facing away from asteroid and distance is small, thrust forward fast
-        elif abs(angle_diff) > 2*math.pi/3 and asteroid_distance < 250:
-            thrust = thrust_undirected * 300
-        # Otherwise thrust undirected slower
-        else:
-            thrust = thrust_undirected * 150
-        
+        thrust = movement.output['ship_thrust'] * 200
 
         drop_mine = False
         
