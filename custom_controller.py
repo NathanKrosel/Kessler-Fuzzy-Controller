@@ -124,17 +124,17 @@ class CustomController(KesslerController):
         
         # controller setup logic for thrust
         asteroid_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'asteroid_distance') # 1000 as max window size is 1000
-        asteroid_vel = ctrl.Antecedent(np.arange(0, 800, 5), 'asteroid_vel') # 800 set bc bullet speed is 800 
+        asteroid_vel = ctrl.Antecedent(np.arange(0, 200, 5), 'asteroid_vel') # 200 set bc mostly read values aroind 100
         ship_thrust = ctrl.Consequent(np.arange(0, 1.0, 0.05), 'ship_thrust') 
 
         # large always has a later range than small
-        asteroid_distance['S'] = fuzz.zmf(asteroid_distance.universe, 0, 300)
-        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [150, 400, 750])
+        asteroid_distance['S'] = fuzz.zmf(asteroid_distance.universe, 0, 200)
+        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [175, 400, 750])
         asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, 500, 1000)
 
-        asteroid_vel['S'] = fuzz.zmf(asteroid_vel.universe, 0, 200)
-        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [100, 300, 600])
-        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 400, 800)
+        asteroid_vel['S'] = fuzz.zmf(asteroid_vel.universe, 0, 70)
+        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [50, 100, 150])
+        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 100, 200)
 
         ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [0, 0, 0.3])
         ship_thrust['M'] = fuzz.trimf(ship_thrust.universe, [0.2, 0.5, 0.8])
@@ -224,6 +224,7 @@ class CustomController(KesslerController):
         cos_my_theta2 = math.cos(my_theta2)
         # Need the speeds of the asteroid and bullet. speed * time is distance to the intercept point
         asteroid_vel = math.sqrt(closest_asteroid["aster"]["velocity"][0]**2 + closest_asteroid["aster"]["velocity"][1]**2)
+        print("asteroid_vel: ", asteroid_vel)
         bullet_speed = 800 # Hard-coded bullet speed from bullet.py
         
         # Determinant of the quadratic formula b^2-4ac
