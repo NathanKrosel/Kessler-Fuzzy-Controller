@@ -133,25 +133,25 @@ class CustomController(KesslerController):
         asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [175, 400, 750])
         asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, 600, 1000)
 
-        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [0, 0, 70])
-        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [50, 100, 150])
-        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 100, 200)
+        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [0, 0, 110])
+        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [75, 150, 225])
+        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, 150, 300)
         
         theta_diff['S'] = fuzz.trimf(theta_diff.universe, [-math.pi/3, 0, math.pi/3])
-        theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [math.pi/4, math.pi/2, 3*math.pi/4])
-        theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [-3*math.pi/4, -math.pi/2, -math.pi/4])
+        theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [math.pi/3, math.pi/2, 2*math.pi/3])
+        theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [-2*math.pi/3, -math.pi/2, -math.pi/3])
         theta_diff['L'] = np.fmax(
                 fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3),
                 fuzz.smf(theta_diff.universe,  2*math.pi/3,  math.pi)
             )
 
-        ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-1.0, -1.0, -0.5])
-        ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-0.8, -0.5, -0.2])
+        ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-1.0, -1.0, -0.75])
+        ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-0.7, -0.5, -0.2])
         ship_thrust['BL'] = fuzz.trimf(ship_thrust.universe, [-0.3, 0.0, 0.0])
         ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [-0.1, 0, 0.1])
         ship_thrust['FL'] = fuzz.trimf(ship_thrust.universe, [0, 0, 0.3])
-        ship_thrust['FM'] = fuzz.trimf(ship_thrust.universe, [0.2, 0.5, 0.8])
-        ship_thrust['FH'] = fuzz.trimf(ship_thrust.universe, [0.5, 1.0, 1.0])
+        ship_thrust['FM'] = fuzz.trimf(ship_thrust.universe, [0.2, 0.5, 0.7])
+        ship_thrust['FH'] = fuzz.trimf(ship_thrust.universe, [0.75, 1.0, 1.0])
 
         rule1_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BH'])
         rule2_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BM'])
