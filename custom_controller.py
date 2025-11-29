@@ -336,7 +336,7 @@ class CustomController(KesslerController):
         movement.compute()
         
         # gets magnitude of thrust
-        thrust = movement.output['ship_thrust'] * 200
+        thrust = movement.output['ship_thrust'] * 250
 
         drop_mine = False
         
