@@ -25,6 +25,7 @@ class CustomController(KesslerController):
         
     def __init__(self):
         self.eval_frames = 0 #What is this?
+        self.last_mine_frame = -1000  # Track when we last dropped a mine
 
         # self.targeting_control is the targeting rulebase, which is static in this controller.      
         # Declare variables
@@ -338,9 +339,36 @@ class CustomController(KesslerController):
         # gets magnitude of thrust
         thrust = movement.output['ship_thrust'] * 250
 
+        # drop if asteroid is approaching and very close
         drop_mine = False
+        can_deploy = ship_state.get("can_deploy_mine", False)
+        mines_remaining = ship_state.get("mines_remaining", 0)
         
-        self.eval_frames +=1
+        # Cooldown: only drop 1 mine every 3 seconds (90 frames)
+        frames_since_last_mine = self.eval_frames - self.last_mine_frame
+        mine_cooldown_ready = frames_since_last_mine > 90
+        
+        if can_deploy and mines_remaining != 0 and mine_cooldown_ready and closest_asteroid["dist"] < 80:
+            # Check if asteroid is actually coming towards us (not moving away)
+            ast = closest_asteroid["aster"]
+            
+            # Vector from asteroid to ship
+            to_ship_x = ship_pos_x - ast["position"][0]
+            to_ship_y = ship_pos_y - ast["position"][1]
+            
+            # Dot product: if positive, asteroid is moving toward ship
+            approaching = (ast["velocity"][0] * to_ship_x + ast["velocity"][1] * to_ship_y) > 0
+            
+            if approaching:
+                drop_mine = True
+                self.last_mine_frame = self.eval_frames
+        
+        # If we just dropped a mine (within last 1 second), boost thrust to escape
+        if frames_since_last_mine < 30:
+            # Override thrust to escape forward
+            thrust = 300
+        
+        self.eval_frames += 1
         
         #DEBUG
         print(thrust, bullet_t, shooting_theta, turn_rate, fire)
