@@ -341,8 +341,8 @@ class CustomController(KesslerController):
 
         # drop if asteroid is approaching and very close
         drop_mine = False
-        can_deploy = ship_state.get("can_deploy_mine", False)
-        mines_remaining = ship_state.get("mines_remaining", 0)
+        can_deploy = getattr(ship_state, "can_deploy_mine", False)
+        mines_remaining = getattr(ship_state, "mines_remaining", 0)
         
         # Cooldown: only drop 1 mine every 3 seconds (90 frames)
         frames_since_last_mine = self.eval_frames - self.last_mine_frame
