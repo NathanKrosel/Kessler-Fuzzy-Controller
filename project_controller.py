@@ -285,14 +285,6 @@ class ProjectController(KesslerController):
         )
         bullet_speed = 800
 
-        # Check if nearest asteroid is moving toward us
-        rel_x = closest_asteroid["aster"]["position"][0] - ship_pos_x
-        rel_y = closest_asteroid["aster"]["position"][1] - ship_pos_y
-        rel_vx = closest_asteroid["aster"]["velocity"][0]
-        rel_vy = closest_asteroid["aster"]["velocity"][1]
-        incoming_dot = rel_vx * rel_x + rel_vy * rel_y
-        incoming = incoming_dot < 0
-
         targ_det = (
             -2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2
         ) ** 2 - (
@@ -343,47 +335,25 @@ class ProjectController(KesslerController):
         turn_rate = float(shooting.output["ship_turn"])
         fire = shooting.output["ship_fire"] >= 0.0
 
-        # Allow shooting when roughly aligned even if not perfect
-        if abs(shooting_theta) < math.radians(15) and bullet_t < 1.2:
-            fire = True
-
-        # Thrust only to escape from close incoming asteroids
-        danger_dist_scale = 260.0
-        if incoming and closest_asteroid["dist"] < danger_dist_scale:
-            danger_val = max(
-                0.0,
-                min(
-                    1.0,
-                    (danger_dist_scale - closest_asteroid["dist"])
-                    / danger_dist_scale,
-                ),
-            )
-        else:
-            danger_val = 0.0
+        danger_dist_scale = 300.0
+        danger_val = max(
+            0.0,
+            min(
+                1.0,
+                (danger_dist_scale - closest_asteroid["dist"])
+                / danger_dist_scale,
+            ),
+        )
 
         big_ast = self._nearest_big_asteroid(ship_state, game_state)
         if big_ast is None:
             big_near_val = 0.0
         else:
-            # Big asteroid threat only when close and moving toward us
-            rel_bx = big_ast["aster"]["position"][0] - ship_pos_x
-            rel_by = big_ast["aster"]["position"][1] - ship_pos_y
-            rel_bvx = big_ast["aster"]["velocity"][0]
-            rel_bvy = big_ast["aster"]["velocity"][1]
-            big_incoming_dot = rel_bvx * rel_bx + rel_bvy * rel_by
-            big_incoming = big_incoming_dot < 0
-
-            big_near_scale = 260.0
-            if big_incoming and big_ast["dist"] < big_near_scale:
-                big_near_val = max(
-                    0.0,
-                    min(
-                        1.0,
-                        (big_near_scale - big_ast["dist"]) / big_near_scale,
-                    ),
-                )
-            else:
-                big_near_val = 0.0
+            big_near_scale = 350.0
+            big_near_val = max(
+                0.0,
+                min(1.0, (big_near_scale - big_ast["dist"]) / big_near_scale),
+            )
 
         navigation = ctrl.ControlSystemSimulation(
             self.navigation_control,
@@ -396,25 +366,19 @@ class ProjectController(KesslerController):
         thrust = float(navigation.output["thrust"])
         drop_mine = navigation.output["mine"] >= 0.0
 
-        # If a big asteroid is very close and coming toward us, drop mine and escape
-        if big_ast is not None:
-            rel_bx = big_ast["aster"]["position"][0] - ship_pos_x
-            rel_by = big_ast["aster"]["position"][1] - ship_pos_y
-            rel_bvx = big_ast["aster"]["velocity"][0]
-            rel_bvy = big_ast["aster"]["velocity"][1]
-            big_incoming_dot = rel_bvx * rel_bx + rel_bvy * rel_by
-            big_incoming = big_incoming_dot < 0
-
-            if big_incoming and big_ast["dist"] < 220:
-                drop_mine = True
-                ship_heading_rad = ship_state["heading"] * math.pi / 180.0
-                escape_angle = math.atan2(-rel_by, -rel_bx)
-                rel_escape = self._wrap_angle(escape_angle - ship_heading_rad)
-                if rel_escape > 0:
-                    turn_rate = 150.0
-                else:
-                    turn_rate = -150.0
-                thrust = 200.0
+        # After dropping a mine near a big asteroid, turn and thrust away from it
+        if big_ast is not None and big_ast["dist"] < 220:
+            drop_mine = True
+            ship_heading_rad = ship_state["heading"] * math.pi / 180.0
+            vec_x_big = big_ast["aster"]["position"][0] - ship_pos_x
+            vec_y_big = big_ast["aster"]["position"][1] - ship_pos_y
+            escape_angle = math.atan2(-vec_y_big, -vec_x_big)
+            rel_escape = self._wrap_angle(escape_angle - ship_heading_rad)
+            if rel_escape > 0:
+                turn_rate = 150.0
+            else:
+                turn_rate = -150.0
+            thrust = 200.0
 
         if closest_asteroid is not None and closest_asteroid["dist"] < 120:
             ship_heading_rad = ship_state["heading"] * math.pi / 180.0
