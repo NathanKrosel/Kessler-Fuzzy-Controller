@@ -141,10 +141,9 @@ class CustomController(KesslerController):
         theta_diff['S'] = fuzz.trimf(theta_diff.universe, [-math.pi/3, 0, math.pi/3])
         theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [math.pi/3, math.pi/2, 2*math.pi/3])
         theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [-2*math.pi/3, -math.pi/2, -math.pi/3])
-        theta_diff['L'] = np.fmax(
-                fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3),
-                fuzz.smf(theta_diff.universe,  2*math.pi/3,  math.pi)
-            )
+        theta_diff_PL = fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3)
+        theta_diff_NL = fuzz.smf(theta_diff.universe,  2*math.pi/3, math.pi)
+        theta_diff['L'] = np.maximum(theta_diff_PL, theta_diff_NL)
 
         ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-1.0, -1.0, -0.75])
         ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-0.7, -0.5, -0.2])

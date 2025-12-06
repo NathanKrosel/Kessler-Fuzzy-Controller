@@ -163,10 +163,9 @@ class CustomController(KesslerController):
         # negative medium theta diff (asteroid to the left)
         theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [self.scale_theta(theta_diff_trimf[2,0]), self.scale_theta(theta_diff_trimf[2,1]), self.scale_theta(theta_diff_trimf[2,2])])
         # large theta diff (asteroid near the back)
-        theta_diff['L'] = np.fmax(
-                fuzz.zmf(theta_diff.universe, self.scale_theta(theta_diff_smf[0,0]), self.scale_theta(theta_diff_smf[0,1])),
-                fuzz.smf(theta_diff.universe,  self.scale_theta(theta_diff_smf[1,0]), self.scale_theta(theta_diff_smf[1,1]))
-            )
+        theta_diff_PL = fuzz.zmf(theta_diff.universe, self.scale_theta(theta_diff_smf[0,0]), self.scale_theta(theta_diff_smf[0,1]))
+        theta_diff_NL = fuzz.smf(theta_diff.universe,  self.scale_theta(theta_diff_smf[1,0]), self.scale_theta(theta_diff_smf[1,1]))
+        theta_diff['L'] = np.maximum(theta_diff_PL, theta_diff_NL)
 
         # SIMULATED GENES:
         ship_thrust_genes = np.array([0, 0, 0.3, 0.2, 0.5, 0.7, 0.75, 1, 1])
