@@ -23,8 +23,9 @@ class CustomController(KesslerController):
 
 
 
-    def __init__(self):
+    def __init__(self, chromosome=None):
         self.eval_frames = 0 #What is this?
+        self.last_mine_frame = -1000  # Track when we last dropped a mine
 
         # self.targeting_control is the targeting rulebase, which is static in this controller.
         # Declare variables
@@ -129,26 +130,36 @@ class CustomController(KesslerController):
         ship_thrust = ctrl.Consequent(np.arange(-1.0, 1.0, 0.05), 'ship_thrust')
 
         # large always has a later range than small
-        # ASSUMED GENES WILL BE [0,1] INCLUSIVE
-        # SIMULATED GENES:
-        asteroid_distance_genes = np.array([0, 0, 0.2, 0.175, 0.400, 0.750, 0.600, 0.1000])
+        # Allow GA-provided genes when available, otherwise fall back to defaults.
+        genes = np.array(chromosome, dtype=float) if chromosome is not None else None
+        if genes is not None and len(genes) >= 15:
+            asteroid_distance_genes = genes[0:8]
+            asteroid_vel_genes = genes[8:15]
+        else:
+            asteroid_distance_genes = np.array([0, 0, 0.2, 0.175, 0.400, 0.750, 0.600, 0.1000])
+            asteroid_vel_genes = np.array([0, 0, 0.110, 0.075, 0.150, 0.225, 0.150])
+
         asteroid_distance_trimf = asteroid_distance_genes[0:6] # first 6 genes are for S and M trimf
         asteroid_distance_trimf = asteroid_distance_trimf.reshape(2, 3)
-        asteroid_distance_smf = asteroid_distance_genes[6:] # last 2 genes for L smf
+        asteroid_distance_trimf = np.array([np.sort(row) for row in asteroid_distance_trimf])
+        asteroid_distance_smf = np.sort(asteroid_distance_genes[6:]) # last 2 genes for L smf
         # scale by 1000
         asteroid_distance['S'] = fuzz.trimf(asteroid_distance.universe, [asteroid_distance_trimf[0,0]*1000, asteroid_distance_trimf[0,1]*1000, asteroid_distance_trimf[0,2]*1000])
         asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [asteroid_distance_trimf[1,0]*1000, asteroid_distance_trimf[1,1]*1000, asteroid_distance_trimf[1,2]*1000])
         asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, asteroid_distance_smf[0]*1000, asteroid_distance_smf[1]*1000)
 
-        # SIMULATED GENES:
-        asteroid_vel_genes = np.array([0, 0, 0.110, 0.075, 0.150, 0.225, 0.150, 0.300])
-        asteroid_vel_trimf = asteroid_vel_genes[0:6] # first 6 genes are for S and M trimf
-        asteroid_vel_trimf = asteroid_vel_trimf.reshape(2, 3)
-        asteroid_vel_smf = asteroid_vel_genes[6:] # last 2 genes for L smf
+        # Velocity genes: 6 for S/M trimf, 1 for L smf start (upper bound fixed to universe max)
+        asteroid_vel_genes = asteroid_vel_genes.copy()
+        if len(asteroid_vel_genes) < 7:
+            # pad if somehow short
+            asteroid_vel_genes = np.pad(asteroid_vel_genes, (0, 7 - len(asteroid_vel_genes)), constant_values=0.0)
+        asteroid_vel_genes[0:3] = np.sort(asteroid_vel_genes[0:3])
+        asteroid_vel_genes[3:6] = np.sort(asteroid_vel_genes[3:6])
+        vel_L_start = min(asteroid_vel_genes[6] * 300, 200)
         # scaled by 300
-        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_trimf[0,0]*300, asteroid_vel_trimf[0,1]*300, asteroid_vel_trimf[0,2]*300])
-        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_trimf[1,0]*300, asteroid_vel_trimf[1,1]*300, asteroid_vel_trimf[1,2]*300])
-        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, asteroid_vel_smf[0]*300, asteroid_vel_smf[1]*300)
+        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_genes[0]*300, asteroid_vel_genes[1]*300, asteroid_vel_genes[2]*300])
+        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_genes[3]*300, asteroid_vel_genes[4]*300, asteroid_vel_genes[5]*300])
+        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, vel_L_start, 200)
 
         # SIMULATED GENES:
         theta_diff_genes = np.array([0.33, 0.5, 0.67, 0.67, 0.75, 0.83, 0.17, 0.25, 0.33, 0, 0.167, 0.83, 1])
@@ -163,9 +174,10 @@ class CustomController(KesslerController):
         # negative medium theta diff (asteroid to the left)
         theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [self.scale_theta(theta_diff_trimf[2,0]), self.scale_theta(theta_diff_trimf[2,1]), self.scale_theta(theta_diff_trimf[2,2])])
         # large theta diff (asteroid near the back)
-        theta_diff_PL = fuzz.zmf(theta_diff.universe, self.scale_theta(theta_diff_smf[0,0]), self.scale_theta(theta_diff_smf[0,1]))
-        theta_diff_NL = fuzz.smf(theta_diff.universe,  self.scale_theta(theta_diff_smf[1,0]), self.scale_theta(theta_diff_smf[1,1]))
-        theta_diff['L'] = np.maximum(theta_diff_PL, theta_diff_NL)
+        theta_diff['L'] = np.fmax(
+                fuzz.zmf(theta_diff.universe, self.scale_theta(theta_diff_smf[0,0]), self.scale_theta(theta_diff_smf[0,1])),
+                fuzz.smf(theta_diff.universe,  self.scale_theta(theta_diff_smf[1,0]), self.scale_theta(theta_diff_smf[1,1]))
+            )
 
         # SIMULATED GENES:
         ship_thrust_genes = np.array([0, 0, 0.3, 0.2, 0.5, 0.7, 0.75, 1, 1])
@@ -235,11 +247,12 @@ class CustomController(KesslerController):
         self.thrust_movement.addrule(rule19_thrust)
         self.thrust_movement.addrule(rule20_thrust)
 
+    @staticmethod
     def scale_theta(val):
         new = (val * 2*math.pi) - math.pi
         return new
 
-    def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool]:
+    def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool, bool]:
         """
         Method processed each time step by this controller.
         """
@@ -373,32 +386,48 @@ class CustomController(KesslerController):
         thrust = movement.output['ship_thrust'] * 250
 
         drop_mine = False
-        # can_deploy = ship_state.get("can_deploy_mine", False)
-        # mines_remaining = ship_state.get("mines_remaining", 0)
+        try:
+            can_deploy = ship_state["can_deploy_mine"]
+        except (KeyError, TypeError):
+            can_deploy = False
+        try:
+            mines_remaining = ship_state["mines_remaining"]
+        except (KeyError, TypeError):
+            mines_remaining = 0
 
-        # # Cooldown: only drop 1 mine every 3 seconds (90 frames)
-        # frames_since_last_mine = self.eval_frames - self.last_mine_frame
-        # mine_cooldown_ready = frames_since_last_mine > 90
+        # Cooldown: only drop 1 mine every 3 seconds (90 frames)
+        frames_since_last_mine = self.eval_frames - self.last_mine_frame
+        mine_cooldown_ready = frames_since_last_mine > 90
 
-        # if can_deploy and mines_remaining != 0 and mine_cooldown_ready and closest_asteroid["dist"] < 80:
-        #     # Check if asteroid is actually coming TOWARD us (not moving away)
-        #     ast = closest_asteroid["aster"]
+        # Fuzzy mine deployment
+        rel_speed_val = 0.0
+        try:
+            to_ship_x = ship_pos_x - closest_asteroid["aster"]["position"][0]
+            to_ship_y = ship_pos_y - closest_asteroid["aster"]["position"][1]
+            if closest_asteroid["dist"] > 1:
+                rel_speed_val = (closest_asteroid["aster"]["velocity"][0] * to_ship_x + closest_asteroid["aster"]["velocity"][1] * to_ship_y) / closest_asteroid["dist"]
+            mine_sim = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
+            mine_sim.input['mine_distance'] = closest_asteroid["dist"]
+            mine_sim.input['rel_speed'] = rel_speed_val
+            mine_sim.compute()
+            mine_score = mine_sim.output.get('mine_decision', 0)
+        except Exception:
+            mine_score = 0
+        if np.isnan(mine_score):
+            mine_score = 0
 
-        #     # Vector from asteroid to ship
-        #     to_ship_x = ship_pos_x - ast["position"][0]
-        #     to_ship_y = ship_pos_y - ast["position"][1]
+        drop_window = closest_asteroid["dist"] < 200  # slightly larger window to allow drops
+        approaching = rel_speed_val > 0
+        if can_deploy and mines_remaining != 0 and mine_cooldown_ready and drop_window and (mine_score > 0.5 or (approaching and closest_asteroid["dist"] < 120)):
+            drop_mine = True
+            self.last_mine_frame = self.eval_frames
 
-        #     # Dot product: if positive, asteroid is moving toward ship
-        #     approaching = (ast["velocity"][0] * to_ship_x + ast["velocity"][1] * to_ship_y) > 0
-
-        #     if approaching:
-        #         drop_mine = True
-        #         self.last_mine_frame = self.eval_frames
-
-        # # If we just dropped a mine (within last 1 second), boost thrust to escape
-        # if frames_since_last_mine < 30:
-        #     # Override thrust to escape forward
-        #     thrust = 300
+        # If we just dropped a mine (within last 1 second), turn and thrust away from nearest asteroid
+        if frames_since_last_mine < 30:
+            escape_heading = math.degrees(math.atan2(-y_diff, -x_diff)) % 360
+            heading_diff = (escape_heading - ship_state["heading"] + 540) % 360 - 180
+            turn_rate = max(min(heading_diff * 3, 180), -180)  # steer toward open space, clamp to ship limits
+            thrust = 300
 
         self.eval_frames += 1
 
