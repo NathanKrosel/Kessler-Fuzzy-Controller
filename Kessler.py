@@ -1,24 +1,6 @@
-# ECE 449 Intelligent Systems Engineering
-# Fall 2023
-# Dr. Scott Dick
-
-# Demonstration of a fuzzy tree-based controller for Kessler Game.
-# Please see the Kessler Game Development Guide by Dr. Scott Dick for a
-#   detailed discussion of this source code.
-
-# References:
-# https://scikit-fuzzy.readthedocs.io/en/latest/auto_examples/plot_tipping_problem.html
-# https://numpy.org/devdocs/reference/generated/numpy.fmax.html
-# https://medium.com/@amit25173/understanding-element-wise-maximum-in-numpy-43916b1c2002
-# https://www.kaggle.com/code/emineyetm/creating-and-plotting-triangular-fuzzy-membership
-# https://www.geeksforgeeks.org/python/common-operations-on-fuzzy-set-with-example-and-code/
-# Lab 5, Lab 4
-# https://github.com/danielwilczak101/EasyGA
-# https://github.com/ThalesGroup/kessler-game/tree/main
-
-
 import math
 import random
+import time
 from typing import Dict, Tuple
 
 import EasyGA
@@ -27,474 +9,403 @@ import skfuzzy as fuzz
 from skfuzzy import control as ctrl
 
 from kesslergame import GraphicsType, Scenario, TrainerEnvironment, KesslerController  # type: ignore
-from custom_controller_ga import CustomController as GAController
 
-
-
+# --- CustomController Class (GA Optimized) ---
 
 class CustomController(KesslerController):
 
-
-
-    def __init__(self):
-        self.eval_frames = 0 #What is this?
+    def __init__(self, chromosome=None):
+        self.eval_frames = 0
         self.last_mine_frame = -1000  # Track when we last dropped a mine
 
-        # self.targeting_control is the targeting rulebase, which is static in this controller.
+        # =================================================================
+        # 1. Targeting Control (STATIC - Not GA Optimized in this version)
+        # =================================================================
+
         # Declare variables
         bullet_time = ctrl.Antecedent(np.arange(0,1.0,0.002), 'bullet_time')
-        theta_delta = ctrl.Antecedent(np.arange(-1*math.pi/30,math.pi/30,0.1), 'theta_delta') # Radians due to Python
-        ship_turn = ctrl.Consequent(np.arange(-180,180,3), 'ship_turn') # Degrees due to Kessler
+        theta_delta = ctrl.Antecedent(np.arange(-1*math.pi/30,math.pi/30,0.1), 'theta_delta') # Radians
+        ship_turn = ctrl.Consequent(np.arange(-180,180,3), 'ship_turn') # Degrees
         ship_fire = ctrl.Consequent(np.arange(-1,1,0.1), 'ship_fire')
 
-        #Declare fuzzy sets for bullet_time (how long it takes for the bullet to reach the intercept point)
+        # Declare fuzzy sets for bullet_time
         bullet_time['S'] = fuzz.trimf(bullet_time.universe,[0,0,0.05])
         bullet_time['M'] = fuzz.trimf(bullet_time.universe, [0,0.05,0.1])
         bullet_time['L'] = fuzz.smf(bullet_time.universe,0.0,0.1)
 
-        # Declare fuzzy sets for theta_delta (degrees of turn needed to reach the calculated firing angle)
-        # Hard-coded for a game step of 1/30 seconds
+        # Declare fuzzy sets for theta_delta
         theta_delta['NL'] = fuzz.zmf(theta_delta.universe, -1*math.pi/30,-2*math.pi/90)
         theta_delta['NM'] = fuzz.trimf(theta_delta.universe, [-1*math.pi/30, -2*math.pi/90, -1*math.pi/90])
         theta_delta['NS'] = fuzz.trimf(theta_delta.universe, [-2*math.pi/90,-1*math.pi/90,math.pi/90])
-        # theta_delta['Z'] = fuzz.trimf(theta_delta.universe, [-1*math.pi/90,0,math.pi/90])
         theta_delta['PS'] = fuzz.trimf(theta_delta.universe, [-1*math.pi/90,math.pi/90,2*math.pi/90])
         theta_delta['PM'] = fuzz.trimf(theta_delta.universe, [math.pi/90,2*math.pi/90, math.pi/30])
         theta_delta['PL'] = fuzz.smf(theta_delta.universe,2*math.pi/90,math.pi/30)
 
-        # Declare fuzzy sets for the ship_turn consequent; this will be returned as turn_rate.
-        # Hard-coded for a game step of 1/30 seconds
+        # Declare fuzzy sets for the ship_turn consequent
         ship_turn['NL'] = fuzz.trimf(ship_turn.universe, [-180,-180,-120])
         ship_turn['NM'] = fuzz.trimf(ship_turn.universe, [-180,-120,-60])
         ship_turn['NS'] = fuzz.trimf(ship_turn.universe, [-120,-60,60])
-        # ship_turn['Z'] = fuzz.trimf(ship_turn.universe, [-60,0,60])
         ship_turn['PS'] = fuzz.trimf(ship_turn.universe, [-60,60,120])
         ship_turn['PM'] = fuzz.trimf(ship_turn.universe, [60,120,180])
         ship_turn['PL'] = fuzz.trimf(ship_turn.universe, [120,180,180])
 
-        #Declare singleton fuzzy sets for the ship_fire consequent; -1 -> don't fire, +1 -> fire; this will be  thresholded
-        #   and returned as the boolean 'fire'
+        #Declare singleton fuzzy sets for the ship_fire consequent
         ship_fire['N'] = fuzz.trimf(ship_fire.universe, [-1,-1,0.0])
         ship_fire['Y'] = fuzz.trimf(ship_fire.universe, [0.0,1,1])
 
-        #Declare each fuzzy rule
+        #Declare each fuzzy rule (Rules 4, 11, 18 removed as in original)
         rule1 = ctrl.Rule(bullet_time['L'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N']))
         rule2 = ctrl.Rule(bullet_time['L'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N']))
         rule3 = ctrl.Rule(bullet_time['L'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
-        # rule4 = ctrl.Rule(bullet_time['L'] & theta_delta['Z'], (ship_turn['Z'], ship_fire['Y']))
         rule5 = ctrl.Rule(bullet_time['L'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
         rule6 = ctrl.Rule(bullet_time['L'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N']))
         rule7 = ctrl.Rule(bullet_time['L'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N']))
         rule8 = ctrl.Rule(bullet_time['M'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N']))
         rule9 = ctrl.Rule(bullet_time['M'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['N']))
         rule10 = ctrl.Rule(bullet_time['M'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
-        # rule11 = ctrl.Rule(bullet_time['M'] & theta_delta['Z'], (ship_turn['Z'], ship_fire['Y']))
         rule12 = ctrl.Rule(bullet_time['M'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
         rule13 = ctrl.Rule(bullet_time['M'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['N']))
         rule14 = ctrl.Rule(bullet_time['M'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['N']))
         rule15 = ctrl.Rule(bullet_time['S'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['Y']))
         rule16 = ctrl.Rule(bullet_time['S'] & theta_delta['NM'], (ship_turn['NM'], ship_fire['Y']))
         rule17 = ctrl.Rule(bullet_time['S'] & theta_delta['NS'], (ship_turn['NS'], ship_fire['Y']))
-        # rule18 = ctrl.Rule(bullet_time['S'] & theta_delta['Z'], (ship_turn['Z'], ship_fire['Y']))
         rule19 = ctrl.Rule(bullet_time['S'] & theta_delta['PS'], (ship_turn['PS'], ship_fire['Y']))
         rule20 = ctrl.Rule(bullet_time['S'] & theta_delta['PM'], (ship_turn['PM'], ship_fire['Y']))
         rule21 = ctrl.Rule(bullet_time['S'] & theta_delta['PL'], (ship_turn['PL'], ship_fire['Y']))
 
-        #DEBUG
-        #bullet_time.view()
-        #theta_delta.view()
-        #ship_turn.view()
-        #ship_fire.view()
+        self.targeting_control = ctrl.ControlSystem([
+            rule1, rule2, rule3, rule5, rule6, rule7, rule8, rule9, rule10,
+            rule12, rule13, rule14, rule15, rule16, rule17, rule19, rule20, rule21
+        ])
 
-
-
-        # Declare the fuzzy controller, add the rules
-        # This is an instance variable, and thus available for other methods in the same object. See notes.
-        # self.targeting_control = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9, rule10, rule11, rule12, rule13, rule14, rule15])
-
-        self.targeting_control = ctrl.ControlSystem()
-        self.targeting_control.addrule(rule1)
-        self.targeting_control.addrule(rule2)
-        self.targeting_control.addrule(rule3)
-        # self.targeting_control.addrule(rule4)
-        self.targeting_control.addrule(rule5)
-        self.targeting_control.addrule(rule6)
-        self.targeting_control.addrule(rule7)
-        self.targeting_control.addrule(rule8)
-        self.targeting_control.addrule(rule9)
-        self.targeting_control.addrule(rule10)
-        # self.targeting_control.addrule(rule11)
-        self.targeting_control.addrule(rule12)
-        self.targeting_control.addrule(rule13)
-        self.targeting_control.addrule(rule14)
-        self.targeting_control.addrule(rule15)
-        self.targeting_control.addrule(rule16)
-        self.targeting_control.addrule(rule17)
-        # self.targeting_control.addrule(rule18)
-        self.targeting_control.addrule(rule19)
-        self.targeting_control.addrule(rule20)
-        self.targeting_control.addrule(rule21)
-
-
-        # controller setup logic for thrust
-        asteroid_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'asteroid_distance') # 1000 as max window size is 1000
-        asteroid_vel = ctrl.Antecedent(np.arange(0, 200, 5), 'asteroid_vel') # 200 set bc mostly read values aroind 100
-        theta_diff = ctrl.Antecedent(np.arange(-math.pi, math.pi, 0.1), 'theta_diff') # normalized range
+        # =================================================================
+        # 2. Thrust Control (GA OPTIMIZED)
+        # =================================================================
+        asteroid_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'asteroid_distance')
+        asteroid_vel = ctrl.Antecedent(np.arange(0, 200, 5), 'asteroid_vel')
+        theta_diff = ctrl.Antecedent(np.arange(-math.pi, math.pi, 0.1), 'theta_diff')
         ship_thrust = ctrl.Consequent(np.arange(-1.0, 1.0, 0.05), 'ship_thrust')
 
-        # large always has a later range than small
-        # ASSUMED GENES WILL BE [0,1] INCLUSIVE
-        # SIMULATED GENES:
-        asteroid_distance_genes = np.array([0, 0, 0.2, 0.175, 0.400, 0.750, 0.600, 0.1000])
-        asteroid_distance_trimf = asteroid_distance_genes[0:6] # first 6 genes are for S and M trimf
-        asteroid_distance_trimf = asteroid_distance_trimf.reshape(2, 3)
-        asteroid_distance_smf = asteroid_distance_genes[6:] # last 2 genes for L smf
-        asteroid_distance_smf = np.sort(asteroid_distance_smf)  # ensure a <= b
-        # scale by 1000
-        asteroid_distance['S'] = fuzz.trimf(asteroid_distance.universe, [asteroid_distance_trimf[0,0]*1000, asteroid_distance_trimf[0,1]*1000, asteroid_distance_trimf[0,2]*1000])
-        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [asteroid_distance_trimf[1,0]*1000, asteroid_distance_trimf[1,1]*1000, asteroid_distance_trimf[1,2]*1000])
-        asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, asteroid_distance_smf[0]*1000, asteroid_distance_smf[1]*1000)
+        # =================================================================
+        # 3. Mine Control (GA OPTIMIZED) - FIXED!
+        # =================================================================
+        mine_distance = ctrl.Antecedent(np.arange(0, 300, 10), 'mine_distance')
+        mine_asteroid_vel = ctrl.Antecedent(np.arange(0, 200, 5), 'mine_asteroid_vel')
+        mine_alignment = ctrl.Antecedent(np.arange(0, math.pi, 0.1), 'mine_alignment')  # FIXED: Now 0 to π
+        mine_deploy = ctrl.Consequent(np.arange(-1, 1, 0.1), 'mine_deploy')
 
-        # SIMULATED GENES:
-        asteroid_vel_genes = np.array([0, 0, 0.110, 0.075, 0.150, 0.225, 0.150, 0.300])
-        asteroid_vel_trimf = asteroid_vel_genes[0:6] # first 6 genes are for S and M trimf
-        asteroid_vel_trimf = asteroid_vel_trimf.reshape(2, 3)
-        asteroid_vel_smf = asteroid_vel_genes[6:] # last 2 genes for L smf
-        asteroid_vel_smf = np.sort(asteroid_vel_smf)  # ensure a <= b
-        # scaled by 300
-        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_trimf[0,0]*300, asteroid_vel_trimf[0,1]*300, asteroid_vel_trimf[0,2]*300])
-        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [asteroid_vel_trimf[1,0]*300, asteroid_vel_trimf[1,1]*300, asteroid_vel_trimf[1,2]*300])
-        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, asteroid_vel_smf[0]*300, asteroid_vel_smf[1]*300)
+        # --- GA-Optimization: Parsing the Chromosome (54 Genes Total) ---
+        default_full = np.zeros(54)
+        # asteroid_distance (8 genes)
+        default_full[0:8] = [0, 0.1, 0.2, 0.175, 0.400, 0.750, 0.600, 1.0]
+        # asteroid_vel (7 genes)
+        default_full[8:15] = [0, 0.05, 0.11, 0.075, 0.15, 0.225, 0.15]
+        # theta_diff (13 genes)
+        default_full[15:28] = [0.33, 0.5, 0.67, 0.67, 0.75, 0.83, 0.17, 0.25, 0.33, 0, 0.167, 0.83, 1]
+        # ship_thrust (9 genes)
+        default_full[28:37] = [0.0, 0.1, 0.3, 0.2, 0.5, 0.7, 0.75, 0.9, 1.0]
+        # mine_distance (6 genes) - ADJUSTED DEFAULTS
+        default_full[37:43] = [0, 0.1, 0.2, 0.3, 0.5, 0.8]
+        # mine_asteroid_vel (6 genes)
+        default_full[43:49] = [0, 0.2, 0.4, 0.5, 0.7, 1.0]
+        # mine_alignment (4 genes) - ADJUSTED DEFAULTS
+        default_full[49:53] = [0.1, 0.25, 0.6, 0.8]
+        # mine_deploy threshold (1 gene) - LOWERED DEFAULT
+        default_full[53] = 0.2
 
-        # SIMULATED GENES:
-        theta_diff_genes = np.array([0.33, 0.5, 0.67, 0.67, 0.75, 0.83, 0.17, 0.25, 0.33, 0, 0.167, 0.83, 1])
-        theta_diff_trimf = theta_diff_genes[0:9] # first 9 genes are for S, PM, NM trimf
-        theta_diff_trimf = theta_diff_trimf.reshape(3, 3)
-        theta_diff_smf = theta_diff_genes[9:]
-        theta_diff_smf = theta_diff_smf.reshape(2,2)
-        # small theta diff between ship and closest asteroid (asteroid to the front)
+        genes = np.array(chromosome, dtype=float) if chromosome is not None else None
+
+        if genes is None:
+            print("WARNING: Using default fuzzy set parameters. No chromosome provided.")
+            genes = default_full
+        elif len(genes) < 54:
+            print("WARNING: Chromosome shorter than 54 genes; padding remaining with defaults.")
+            padded = default_full.copy()
+            padded[:len(genes)] = genes
+            genes = padded
+        
+        # 2.1 Asteroid Distance (8 genes, scaled 0-1000)
+        dist_genes = genes[0:8]
+        dist_trimf = dist_genes[0:6].reshape(2, 3)
+        dist_trimf = np.array([np.sort(row) for row in dist_trimf]) * 1000
+        dist_smf = np.sort(dist_genes[6:8]) * 1000
+        asteroid_distance['S'] = fuzz.trimf(asteroid_distance.universe, [dist_trimf[0,0], dist_trimf[0,1], dist_trimf[0,2]])
+        asteroid_distance['M'] = fuzz.trimf(asteroid_distance.universe, [dist_trimf[1,0], dist_trimf[1,1], dist_trimf[1,2]])
+        asteroid_distance['L'] = fuzz.smf(asteroid_distance.universe, dist_smf[0], dist_smf[1])
+
+        # 2.2 Asteroid Velocity (7 genes, scaled 0-200)
+        vel_genes = genes[8:15]
+        vel_genes[0:3] = np.sort(vel_genes[0:3])
+        vel_genes[3:6] = np.sort(vel_genes[3:6])
+        vel_L_start = min(vel_genes[6] * 200, 200)
+        asteroid_vel['S'] = fuzz.trimf(asteroid_vel.universe, [vel_genes[0]*200, vel_genes[1]*200, vel_genes[2]*200])
+        asteroid_vel['M'] = fuzz.trimf(asteroid_vel.universe, [vel_genes[3]*200, vel_genes[4]*200, vel_genes[5]*200])
+        asteroid_vel['L'] = fuzz.smf(asteroid_vel.universe, vel_L_start, 200)
+
+        # 2.3 Theta Diff (13 genes, scaled -pi to pi)
+        theta_diff_trimf = genes[15:24].reshape(3, 3)
+        theta_diff_trimf = np.array([np.sort(row) for row in theta_diff_trimf])
+        theta_diff_smf = genes[24:28].reshape(2, 2)
+        theta_diff_smf = np.array([np.sort(row) for row in theta_diff_smf])
         theta_diff['S'] = fuzz.trimf(theta_diff.universe, [self.scale_theta(theta_diff_trimf[0,0]), self.scale_theta(theta_diff_trimf[0,1]), self.scale_theta(theta_diff_trimf[0,2])])
-        # positive medium theta diff (asteroid to the right)
         theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [self.scale_theta(theta_diff_trimf[1,0]), self.scale_theta(theta_diff_trimf[1,1]), self.scale_theta(theta_diff_trimf[1,2])])
-        # negative medium theta diff (asteroid to the left)
         theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [self.scale_theta(theta_diff_trimf[2,0]), self.scale_theta(theta_diff_trimf[2,1]), self.scale_theta(theta_diff_trimf[2,2])])
-        # large theta diff (asteroid near the back)
+        
         theta_diff['L'] = np.fmax(
-                fuzz.zmf(theta_diff.universe, self.scale_theta(theta_diff_smf[0,0]), self.scale_theta(theta_diff_smf[0,1])),
-                fuzz.smf(theta_diff.universe,  self.scale_theta(theta_diff_smf[1,0]), self.scale_theta(theta_diff_smf[1,1]))
+                fuzz.zmf(theta_diff.universe, self.scale_theta(min(theta_diff_smf[0,0], theta_diff_smf[0,1])), self.scale_theta(max(theta_diff_smf[0,0], theta_diff_smf[0,1]))),
+                fuzz.smf(theta_diff.universe,  self.scale_theta(min(theta_diff_smf[1,0], theta_diff_smf[1,1])), self.scale_theta(max(theta_diff_smf[1,0], theta_diff_smf[1,1])))
             )
 
-        # SIMULATED GENES:
-        ship_thrust_genes = np.array([0, 0, 0.3, 0.2, 0.5, 0.7, 0.75, 1, 1])
-        ship_thrust_genes_trimf = ship_thrust_genes.reshape(3, 3)
-        # thrust back at high acceleration
-        ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[2,2]*-1, ship_thrust_genes_trimf[2,1]*-1, ship_thrust_genes_trimf[2,0]*-1])
-        # thrust back at medium acceleration
-        ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[1,2]*-1, ship_thrust_genes_trimf[1,1]*-1, ship_thrust_genes_trimf[1,0]*-1])
-        # thrust back at low acceleration
-        ship_thrust['BL'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[0,2]*-1, ship_thrust_genes_trimf[0,1]*-1, ship_thrust_genes_trimf[0,0]*-1])
-        # thrust low value 
-        ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[0,2]*-1/3, 0, ship_thrust_genes_trimf[0,2]*1/3])
-        # thrust forward at low acceleration
-        ship_thrust['FL'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[0,0], ship_thrust_genes_trimf[0,1], ship_thrust_genes_trimf[0,2]])
-        # thrust forward at medium acceleration
-        ship_thrust['FM'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[1,0], ship_thrust_genes_trimf[1,1], ship_thrust_genes_trimf[1,2]])
-        # thrust forward at high acceleration
-        ship_thrust['FH'] = fuzz.trimf(ship_thrust.universe, [ship_thrust_genes_trimf[2,0], ship_thrust_genes_trimf[2,1], ship_thrust_genes_trimf[2,2]])
+        # 2.4 Ship Thrust (9 genes, scaled -1.0 to 1.0)
+        thrust_genes_mag = np.sort(genes[28:37].reshape(3, 3), axis=1)
+        
+        # Back Thrust (BH, BM, BL)
+        ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-thrust_genes_mag[2,2], -thrust_genes_mag[2,1], -thrust_genes_mag[2,0]])
+        ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-thrust_genes_mag[1,2], -thrust_genes_mag[1,1], -thrust_genes_mag[1,0]])
+        ship_thrust['BL'] = fuzz.trimf(ship_thrust.universe, [-thrust_genes_mag[0,2], -thrust_genes_mag[0,1], -thrust_genes_mag[0,0]])
+        
+        # Low/Zero Thrust (L)
+        ship_thrust['L'] = fuzz.trimf(ship_thrust.universe, [-thrust_genes_mag[0,2]*0.3, 0, thrust_genes_mag[0,2]*0.3])
+        
+        # Forward Thrust (FL, FM, FH)
+        ship_thrust['FL'] = fuzz.trimf(ship_thrust.universe, [thrust_genes_mag[0,0], thrust_genes_mag[0,1], thrust_genes_mag[0,2]])
+        ship_thrust['FM'] = fuzz.trimf(ship_thrust.universe, [thrust_genes_mag[1,0], thrust_genes_mag[1,1], thrust_genes_mag[1,2]])
+        ship_thrust['FH'] = fuzz.trimf(ship_thrust.universe, [thrust_genes_mag[2,0], thrust_genes_mag[2,1], thrust_genes_mag[2,2]])
 
+        # Thrust Control Rules
         rule1_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BH'])
         rule2_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BM'])
         rule3_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BM'])
-
         rule4_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BM'])
         rule5_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BM'])
         rule6_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BL'])
-
         rule7_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & theta_diff['S'], ship_thrust['BM'])
         rule8_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BL'])
         rule9_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BL'])
-
         rule10_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FH'])
         rule11_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
         rule12_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FM'])
-
         rule13_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
         rule14_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
         rule15_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
-
         rule16_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
         rule17_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FL'])
         rule18_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
-
         rule19_thrust = ctrl.Rule(theta_diff['PM'], ship_thrust['BL'])
         rule20_thrust = ctrl.Rule(theta_diff['NM'], ship_thrust['BL'])
 
-        self.thrust_movement = ctrl.ControlSystem()
-        self.thrust_movement.addrule(rule1_thrust)
-        self.thrust_movement.addrule(rule2_thrust)
-        self.thrust_movement.addrule(rule3_thrust)
-        self.thrust_movement.addrule(rule4_thrust)
-        self.thrust_movement.addrule(rule5_thrust)
-        self.thrust_movement.addrule(rule6_thrust)
-        self.thrust_movement.addrule(rule7_thrust)
-        self.thrust_movement.addrule(rule8_thrust)
-        self.thrust_movement.addrule(rule9_thrust)
+        self.thrust_movement = ctrl.ControlSystem([
+            rule1_thrust, rule2_thrust, rule3_thrust, rule4_thrust, rule5_thrust,
+            rule6_thrust, rule7_thrust, rule8_thrust, rule9_thrust, rule10_thrust,
+            rule11_thrust, rule12_thrust, rule13_thrust, rule14_thrust, rule15_thrust,
+            rule16_thrust, rule17_thrust, rule18_thrust, rule19_thrust, rule20_thrust
+        ])
 
-        self.thrust_movement.addrule(rule10_thrust)
-        self.thrust_movement.addrule(rule11_thrust)
-        self.thrust_movement.addrule(rule12_thrust)
-        self.thrust_movement.addrule(rule13_thrust)
-        self.thrust_movement.addrule(rule14_thrust)
-        self.thrust_movement.addrule(rule15_thrust)
-        self.thrust_movement.addrule(rule16_thrust)
-        self.thrust_movement.addrule(rule17_thrust)
-        self.thrust_movement.addrule(rule18_thrust)
-        self.thrust_movement.addrule(rule19_thrust)
-        self.thrust_movement.addrule(rule20_thrust)
+        # =================================================================
+        # 3. Mine Control System 
+        # =================================================================
+        
+        # 3.1 Mine Distance (6 genes, scaled 0-300)
+        mine_dist_genes = genes[37:43]
+        mine_dist_trimf = mine_dist_genes[0:6].reshape(2, 3)
+        mine_dist_trimf = np.array([np.sort(row) for row in mine_dist_trimf]) * 300
+        mine_distance['Close'] = fuzz.trimf(mine_distance.universe, [mine_dist_trimf[0,0], mine_dist_trimf[0,1], mine_dist_trimf[0,2]])
+        mine_distance['Far'] = fuzz.trimf(mine_distance.universe, [mine_dist_trimf[1,0], mine_dist_trimf[1,1], mine_dist_trimf[1,2]])
 
-        # Mine deployment fuzzy control system
-        mine_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'mine_distance')
-        rel_speed = ctrl.Antecedent(np.arange(-200, 200, 5), 'rel_speed')
-        mine_decision = ctrl.Consequent(np.arange(0, 1, 0.1), 'mine_decision')
+        # 3.2 Mine Asteroid Velocity (6 genes, scaled 0-200)
+        mine_vel_genes = genes[43:49]
+        mine_vel_trimf = mine_vel_genes[0:6].reshape(2, 3)
+        mine_vel_trimf = np.array([np.sort(row) for row in mine_vel_trimf]) * 200
+        mine_asteroid_vel['Slow'] = fuzz.trimf(mine_asteroid_vel.universe, [mine_vel_trimf[0,0], mine_vel_trimf[0,1], mine_vel_trimf[0,2]])
+        mine_asteroid_vel['Fast'] = fuzz.trimf(mine_asteroid_vel.universe, [mine_vel_trimf[1,0], mine_vel_trimf[1,1], mine_vel_trimf[1,2]])
 
-        mine_distance['close'] = fuzz.trimf(mine_distance.universe, [0, 0, 150])
-        mine_distance['medium'] = fuzz.trimf(mine_distance.universe, [100, 200, 300])
-        mine_distance['far'] = fuzz.smf(mine_distance.universe, 250, 500)
+        # 3.3 Mine Alignment (4 genes, scaled 0 to π) - FIXED!
+        mine_align_genes = genes[49:53]
+        mine_align_trimf = mine_align_genes[0:4].reshape(2, 2)
+        mine_align_trimf = np.array([np.sort(row) for row in mine_align_trimf])
+        # Small angle = well aligned (approaching), large angle = not aligned
+        mine_alignment['Aligned'] = fuzz.zmf(mine_alignment.universe, mine_align_trimf[0,0] * math.pi, mine_align_trimf[0,1] * math.pi)
+        mine_alignment['NotAligned'] = fuzz.smf(mine_alignment.universe, mine_align_trimf[1,0] * math.pi, mine_align_trimf[1,1] * math.pi)
 
-        rel_speed['approaching'] = fuzz.smf(rel_speed.universe, 0, 50)
-        rel_speed['neutral'] = fuzz.trimf(rel_speed.universe, [-30, 0, 30])
-        rel_speed['receding'] = fuzz.zmf(rel_speed.universe, -50, 0)
+        # 3.4 Mine Deploy Output
+        mine_deploy['No'] = fuzz.trimf(mine_deploy.universe, [-1, -1, 0])
+        mine_deploy['Yes'] = fuzz.trimf(mine_deploy.universe, [0, 1, 1])
 
-        mine_decision['no'] = fuzz.trimf(mine_decision.universe, [0, 0, 0.5])
-        mine_decision['yes'] = fuzz.smf(mine_decision.universe, 0.3, 0.7)
+        # Store mine threshold
+        self.mine_threshold = genes[53]
+        self.mine_threshold = float(np.clip(self.mine_threshold, -1.0, 1.0))
 
-        mine_rule1 = ctrl.Rule(mine_distance['close'] & rel_speed['approaching'], mine_decision['yes'])
-        mine_rule2 = ctrl.Rule(mine_distance['close'] & rel_speed['neutral'], mine_decision['yes'])
-        mine_rule3 = ctrl.Rule(mine_distance['medium'] & rel_speed['approaching'], mine_decision['yes'])
-        mine_rule4 = ctrl.Rule(mine_distance['far'] | rel_speed['receding'], mine_decision['no'])
-        mine_rule5 = ctrl.Rule(mine_distance['medium'] & rel_speed['neutral'], mine_decision['no'])
+        # Mine Control Rules
+        rule1_mine = ctrl.Rule(mine_distance['Close'] & mine_asteroid_vel['Fast'] & mine_alignment['Aligned'], mine_deploy['Yes'])
+        rule2_mine = ctrl.Rule(mine_distance['Close'] & mine_asteroid_vel['Slow'] & mine_alignment['Aligned'], mine_deploy['Yes'])
+        rule3_mine = ctrl.Rule(mine_distance['Close'] & mine_alignment['NotAligned'], mine_deploy['No'])
+        rule4_mine = ctrl.Rule(mine_distance['Far'], mine_deploy['No'])
+        rule5_mine = ctrl.Rule(mine_distance['Close'] & mine_asteroid_vel['Fast'] & mine_alignment['NotAligned'], mine_deploy['No'])
 
-        self.mine_control = ctrl.ControlSystem()
-        self.mine_control.addrule(mine_rule1)
-        self.mine_control.addrule(mine_rule2)
-        self.mine_control.addrule(mine_rule3)
-        self.mine_control.addrule(mine_rule4)
-        self.mine_control.addrule(mine_rule5)
+        self.mine_control = ctrl.ControlSystem([
+            rule1_mine, rule2_mine, rule3_mine, rule4_mine, rule5_mine
+        ])
 
     @staticmethod
     def scale_theta(val):
-        new = (val * 2*math.pi) - math.pi
-        return new
+        # Scales a 0-1 gene value to the -pi to pi range
+        return (val * 2*math.pi) - math.pi
 
     def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool, bool]:
         """
         Method processed each time step by this controller.
         """
-        # These were the constant actions in the basic demo, just spinning and shooting.
-        #thrust = 0 <- How do the values scale with asteroid velocity vector?
-        #turn_rate = 90 <- How do the values scale with asteroid velocity vector?
-
-        # Answers: Asteroid position and velocity are split into their x,y components in a 2-element ?array each.
-        # So are the ship position and velocity, and bullet position and velocity.
-        # Units appear to be meters relative to origin (where?), m/sec, m/sec^2 for thrust.
-        # Everything happens in a time increment: delta_time, which appears to be 1/30 sec; this is hardcoded in many places.
-        # So, position is updated by multiplying velocity by delta_time, and adding that to position.
-        # Ship velocity is updated by multiplying thrust by delta time.
-        # Ship position for this time increment is updated after the the thrust was applied.
-
-
-        # My demonstration controller does not move the ship, only rotates it to shoot the nearest asteroid.
-        # Goal: demonstrate processing of game state, fuzzy controller, intercept computation
-        # Intercept-point calculation derived from the Law of Cosines, see notes for details and citation.
-
-        # Find the closest asteroid (disregards asteroid velocity)
-        ship_pos_x = ship_state["position"][0]     # See src/kesslergame/ship.py in the KesslerGame Github
+        ship_pos_x = ship_state["position"][0]
         ship_pos_y = ship_state["position"][1]
+        
+        # --- Targeting Logic ---
         closest_asteroid = None
-
         for a in game_state["asteroids"]:
-            #Loop through all asteroids, find minimum Eudlidean distance
             curr_dist = math.sqrt((ship_pos_x - a["position"][0])**2 + (ship_pos_y - a["position"][1])**2)
-            if closest_asteroid is None :
-                # Does not yet exist, so initialize first asteroid as the minimum. Ugh, how to do?
+            if closest_asteroid is None or closest_asteroid["dist"] > curr_dist:
                 closest_asteroid = dict(aster = a, dist = curr_dist)
+        
+        if closest_asteroid is None:
+             return 0.0, 0.0, False, False
 
-            else:
-                # closest_asteroid exists, and is thus initialized.
-                if closest_asteroid["dist"] > curr_dist:
-                    # New minimum found
-                    closest_asteroid["aster"] = a
-                    closest_asteroid["dist"] = curr_dist
-
-        # closest_asteroid is now the nearest asteroid object.
-        # Calculate intercept time given ship & asteroid position, asteroid velocity vector, bullet speed (not direction).
-        # Based on Law of Cosines calculation, see notes.
-
-        # Side D of the triangle is given by closest_asteroid.dist. Need to get the asteroid-ship direction
-        #    and the angle of the asteroid's current movement.
-        # REMEMBER TRIG FUNCTIONS ARE ALL IN RADAINS!!!
-
-
+        # Intercept Calculation
         asteroid_ship_x = ship_pos_x - closest_asteroid["aster"]["position"][0]
         asteroid_ship_y = ship_pos_y - closest_asteroid["aster"]["position"][1]
-
         asteroid_ship_theta = math.atan2(asteroid_ship_y,asteroid_ship_x)
-
-        asteroid_direction = math.atan2(closest_asteroid["aster"]["velocity"][1], closest_asteroid["aster"]["velocity"][0]) # Velocity is a 2-element array [vx,vy].
+        asteroid_direction = math.atan2(closest_asteroid["aster"]["velocity"][1], closest_asteroid["aster"]["velocity"][0])
         my_theta2 = asteroid_ship_theta - asteroid_direction
         cos_my_theta2 = math.cos(my_theta2)
-        # Need the speeds of the asteroid and bullet. speed * time is distance to the intercept point
         asteroid_vel = math.sqrt(closest_asteroid["aster"]["velocity"][0]**2 + closest_asteroid["aster"]["velocity"][1]**2)
-        ##print("asteroid_vel: ", asteroid_vel)
-        bullet_speed = 800 # Hard-coded bullet speed from bullet.py
+        bullet_speed = 800
 
-        # Determinant of the quadratic formula b^2-4ac
+        # Quadratic formula determinant
         targ_det = (-2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2)**2 - (4*(asteroid_vel**2 - bullet_speed**2) * (closest_asteroid["dist"]**2))
-
-        # Combine the Law of Cosines with the quadratic formula for solve for intercept time. Remember, there are two values produced.
-        intrcpt1 = ((2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2) + math.sqrt(targ_det)) / (2 * (asteroid_vel**2 -bullet_speed**2))
-        intrcpt2 = ((2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2) - math.sqrt(targ_det)) / (2 * (asteroid_vel**2-bullet_speed**2))
-
-        # Take the smaller intercept time, as long as it is positive; if not, take the larger one.
-        if intrcpt1 > intrcpt2:
-            if intrcpt2 >= 0:
-                bullet_t = intrcpt2
-            else:
-                bullet_t = intrcpt1
+        
+        if targ_det < 0:
+            bullet_t = closest_asteroid["dist"] / bullet_speed
         else:
-            if intrcpt1 >= 0:
-                bullet_t = intrcpt1
-            else:
-                bullet_t = intrcpt2
+            intrcpt1 = ((2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2) + math.sqrt(targ_det)) / (2 * (asteroid_vel**2 -bullet_speed**2))
+            intrcpt2 = ((2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2) - math.sqrt(targ_det)) / (2 * (asteroid_vel**2-bullet_speed**2))
 
-        # Calculate the intercept point. The work backwards to find the ship's firing angle my_theta1.
-        # Velocities are in m/sec, so bullet_t is in seconds. Add one tik, hardcoded to 1/30 sec.
+            if intrcpt1 > intrcpt2:
+                bullet_t = intrcpt2 if intrcpt2 >= 0 else intrcpt1
+            else:
+                bullet_t = intrcpt1 if intrcpt1 >= 0 else intrcpt2
+            
+            if bullet_t < 0:
+                bullet_t = closest_asteroid["dist"] / bullet_speed
+
         intrcpt_x = closest_asteroid["aster"]["position"][0] + closest_asteroid["aster"]["velocity"][0] * (bullet_t+1/30)
         intrcpt_y = closest_asteroid["aster"]["position"][1] + closest_asteroid["aster"]["velocity"][1] * (bullet_t+1/30)
-
-
         my_theta1 = math.atan2((intrcpt_y - ship_pos_y),(intrcpt_x - ship_pos_x))
-
-        # Lastly, find the difference betwwen firing angle and the ship's current orientation. BUT THE SHIP HEADING IS IN DEGREES.
         shooting_theta = my_theta1 - ((math.pi/180)*ship_state["heading"])
-
-        # Wrap all angles to (-pi, pi)
         shooting_theta = (shooting_theta + math.pi) % (2 * math.pi) - math.pi
 
-        # Pass the inputs to the rulebase and fire it
+        # Run Targeting Control
         shooting = ctrl.ControlSystemSimulation(self.targeting_control,flush_after_run=1)
-
         shooting.input['bullet_time'] = bullet_t
         shooting.input['theta_delta'] = shooting_theta
-
         shooting.compute()
-
-        # Get the defuzzified outputs
         turn_rate = shooting.output['ship_turn'] * 3
 
-        if shooting.output['ship_fire'] >= 0:
-            fire = True
-        else:
-            fire = False
+        fire = shooting.output['ship_fire'] >= 0
 
-        # And return your three outputs to the game simulation. Controller algorithm complete.
-        # thrust = 0.0
 
-        # thrust controller
-
-        # finds angle between ship's heading and ship to asteroid
+        # --- Thrust Logic (GA Optimized) ---
         x_diff = closest_asteroid["aster"]["position"][0] - ship_pos_x
         y_diff = closest_asteroid["aster"]["position"][1] - ship_pos_y
         ship_to_asteroid_theta = math.atan2(y_diff, x_diff)
-        theta_diff = ship_to_asteroid_theta - ((math.pi/180)*ship_state["heading"])
-        theta_diff = (theta_diff + math.pi) % (2 * math.pi) - math.pi
+        theta_diff_input = ship_to_asteroid_theta - ((math.pi/180)*ship_state["heading"])
+        theta_diff_input = (theta_diff_input + math.pi) % (2 * math.pi) - math.pi
 
         asteroid_distance = closest_asteroid["dist"]
+        
+        # Run Thrust Control
         movement = ctrl.ControlSystemSimulation(self.thrust_movement, flush_after_run=1)
         movement.input['asteroid_distance'] = asteroid_distance
         movement.input['asteroid_vel'] = asteroid_vel
-        movement.input['theta_diff'] = theta_diff
-        movement.compute()
+        movement.input['theta_diff'] = theta_diff_input
+        try:
+            movement.compute()
+            thrust_raw = movement.output.get('ship_thrust', 0.0)
+        except Exception:
+            thrust_raw = 0.0
+        if np.isnan(thrust_raw):
+            thrust_raw = 0.0
 
-        # gets magnitude of thrust
-        thrust = movement.output['ship_thrust'] * 250
+        thrust = thrust_raw * 250
 
+
+        # --- Mine Logic (FIXED!) ---
         drop_mine = False
-        try:
-            can_deploy = ship_state["can_deploy_mine"]
-        except (KeyError, TypeError):
-            can_deploy = False
-        try:
-            mines_remaining = ship_state["mines_remaining"]
-        except (KeyError, TypeError):
-            mines_remaining = 0
-
-        # Cooldown: only drop 1 mine every 3 seconds (90 frames)
+        can_deploy = ship_state.get("can_deploy_mine", False)
+        mines_remaining = ship_state.get("mines_remaining", 0)
         frames_since_last_mine = self.eval_frames - self.last_mine_frame
         mine_cooldown_ready = frames_since_last_mine > 90
-
-        # Fuzzy mine deployment
-        rel_speed_val = 0.0
-        try:
-            to_ship_x = ship_pos_x - closest_asteroid["aster"]["position"][0]
-            to_ship_y = ship_pos_y - closest_asteroid["aster"]["position"][1]
-            if closest_asteroid["dist"] > 1:
-                rel_speed_val = (closest_asteroid["aster"]["velocity"][0] * to_ship_x + closest_asteroid["aster"]["velocity"][1] * to_ship_y) / closest_asteroid["dist"]
+        
+        if can_deploy and mines_remaining > 0 and mine_cooldown_ready:
+            # Calculate alignment angle using the angle between asteroid velocity and the vector from asteroid to ship
+            # Smaller angle = asteroid moving toward ship = better alignment
+            asteroid_to_ship_vec = (-x_diff, -y_diff)  # From asteroid to ship
+            asteroid_vel_vec = (closest_asteroid["aster"]["velocity"][0], closest_asteroid["aster"]["velocity"][1])
             
-            # Clamp inputs to fuzzy system universe ranges
-            mine_dist_clamped = max(min(closest_asteroid["dist"], 990), 0)  # [0, 1000]
-            rel_speed_clamped = max(min(rel_speed_val, 195), -195)  # [-200, 200]
+            mag_ats = math.sqrt(asteroid_to_ship_vec[0]**2 + asteroid_to_ship_vec[1]**2)
+            mag_vel = math.sqrt(asteroid_vel_vec[0]**2 + asteroid_vel_vec[1]**2)
             
-            mine_sim = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
-            mine_sim.input['mine_distance'] = mine_dist_clamped
-            mine_sim.input['rel_speed'] = rel_speed_clamped
-            mine_sim.compute()
-            mine_score = mine_sim.output.get('mine_decision', 0)
-        except Exception:
-            mine_score = 0
-        if np.isnan(mine_score):
-            mine_score = 0
+            if mag_ats > 0.01 and mag_vel > 0.01:
+                # Calculate angle between asteroid velocity and vector to ship
+                dot_product = asteroid_to_ship_vec[0] * asteroid_vel_vec[0] + asteroid_to_ship_vec[1] * asteroid_vel_vec[1]
+                cos_angle = dot_product / (mag_ats * mag_vel)
+                cos_angle = max(-1, min(1, cos_angle))
+                alignment_angle = math.acos(cos_angle)  # This gives 0 to π
+                # 0 = perfect alignment (heading directly toward ship)
+                # π = moving away from ship
+                
+                # Run Mine Control System
+                mine_sim = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
+                mine_sim.input['mine_distance'] = min(closest_asteroid["dist"], 300)
+                mine_sim.input['mine_asteroid_vel'] = min(asteroid_vel, 200)
+                mine_sim.input['mine_alignment'] = min(alignment_angle, math.pi)
+                try:
+                    mine_sim.compute()
+                    mine_output = mine_sim.output.get('mine_deploy', -1)
+                except Exception as e:
+                    print(f"Mine fuzzy error: {e}")
+                    mine_output = -1
+                if np.isnan(mine_output):
+                    mine_output = -1
 
-        drop_window = closest_asteroid["dist"] < 200  # slightly larger window to allow drops
-        approaching = rel_speed_val > 0
-        if can_deploy and mines_remaining != 0 and mine_cooldown_ready and drop_window and (mine_score > 0.5 or (approaching and closest_asteroid["dist"] < 120)):
-            drop_mine = True
-            self.last_mine_frame = self.eval_frames
-
-        # If we just dropped a mine (within last 1 second), turn and thrust away from nearest asteroid
+                # Deploy mine if fuzzy output exceeds threshold
+                if mine_output >= self.mine_threshold:
+                    drop_mine = True
+                    self.last_mine_frame = self.eval_frames
+                    print(f"MINE DROPPED! Distance: {closest_asteroid['dist']:.1f}, Vel: {asteroid_vel:.1f}, Alignment: {math.degrees(alignment_angle):.1f}°, Output: {mine_output:.2f}")
+             
+        # Escape logic after mine drop
         if frames_since_last_mine < 30:
             escape_heading = math.degrees(math.atan2(-y_diff, -x_diff)) % 360
             heading_diff = (escape_heading - ship_state["heading"] + 540) % 360 - 180
-            turn_rate = max(min(heading_diff * 3, 180), -180)  # steer toward open space, clamp to ship limits
+            turn_rate = max(min(heading_diff * 3, 180), -180)
             thrust = 300
 
         self.eval_frames += 1
-
-        #DEBUG
-        #print(thrust, bullet_t, shooting_theta, turn_rate, fire)
 
         return thrust, turn_rate, fire, drop_mine
 
     @property
     def name(self) -> str:
-        return "Custom Controller"
-    
+        return "GA Optimized Controller"
 
-import matplotlib
-import EasyGA
-import random
-import numpy as np
-from kesslergame import Scenario, GraphicsType, KesslerGame, TrainerEnvironment
-from custom_controller_ga import CustomController as GAController
 
-# Wrapper to fail safely if GA controller outputs are missing (e.g., thrust mf not produced)
-class SafeGAController(GAController):
+# --- GA Setup and Fitness Function ---
+
+class SafeGAController(CustomController):
+    """Wrapper to fail safely if fuzzy controller outputs are missing."""
     def actions(self, ship_state, game_state):
         try:
             return super().actions(ship_state, game_state)
         except KeyError as exc:
-            # Default to no action if thrust output missing
-            if getattr(exc, "args", None) and exc.args[0] == 'ship_thrust':
+            if getattr(exc, "args", None) and exc.args[0] in ['ship_thrust', 'ship_turn', 'ship_fire', 'mine_deploy']:
                 return 0.0, 0.0, False, False
             return 0.0, 0.0, False, False
         except Exception:
@@ -504,44 +415,123 @@ def fitness(chromosome):
     chromosome = [gene.value for gene in chromosome]
 
     my_test_scenario = Scenario(name='Test Scenario',
-        num_asteroids=10,
+        num_asteroids=5,
         ship_states=[
             {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
         ],
         map_size=(1000, 800),
-        time_limit=10,  # even shorter episodes for faster GA
+        time_limit=20,
         ammo_limit_multiplier=0,
         stop_if_no_ammo=False)
     
     game_settings = {
         'perf_tracker': False,
         'prints_on': False,
-        'graphics_type': GraphicsType.NoGraphics,  # headless for faster GA
+        'graphics_type': GraphicsType.NoGraphics,
         'realtime_multiplier': 0,
         'graphics_obj': None,
         'frequency': 30
     }
 
     game = TrainerEnvironment(settings=game_settings)
-
-    controller = SafeGAController(chromosome)
+    controller = SafeGAController(chromosome) 
     score, perf_data = game.run(scenario=my_test_scenario, controllers=[controller])
 
-    result = score.teams[0].asteroids_hit + score.teams[0].accuracy - score.teams[0].deaths
+    asteroids_hit = score.teams[0].asteroids_hit
+    accuracy = score.teams[0].accuracy
+    deaths = score.teams[0].deaths
+    
+    survival_bonus = (3 - deaths) * 50
+    result = asteroids_hit * 10 + accuracy * 100 + survival_bonus - deaths * 100
 
     return result
 
 def gene_generation():
-  return random.uniform(0, 1)
+    return random.uniform(0, 1)
 
+# --- EasyGA Initialization ---
 ga = EasyGA.GA()
-ga.chromosome_length = 15 # need to add
-ga.population_size = 6
+ga.chromosome_length = 54
+ga.population_size = 4
 ga.target_fitness_type = 'max'
-ga.generation_goal = 3
+ga.generation_goal = 2
+ga.selection_rate = 0.5
+ga.mutation_rate = 0.1
 ga.fitness_function_impl = fitness
 ga.gene_impl = lambda: gene_generation()
 
 ga.database_name = ""
+print('Starting GA Evolution...')
+print(f'Population: {ga.population_size}, Generations: {ga.generation_goal}, Chromosome Length: {ga.chromosome_length}')
 ga.evolve()
+print('\n=== Evolution Complete ===')
 ga.print_best_chromosome()
+
+best_genes = None
+try:
+    if hasattr(ga, 'best_chromosome'):
+        print(f'\nBest Fitness: {ga.best_chromosome.fitness}')
+        best_genes = [gene.value for gene in ga.best_chromosome]
+    elif hasattr(ga, 'population') and len(ga.population) > 0:
+        best = max(ga.population, key=lambda x: x.fitness)
+        print(f'\nBest Fitness: {best.fitness}')
+        best_genes = [gene.value for gene in best]
+except Exception as e:
+    print(f'\nCould not retrieve best fitness: {e}')
+
+# =================================================================
+# VISUAL DEMONSTRATION WITH BEST CHROMOSOME
+# =================================================================
+if best_genes is not None:
+    x = input('\nPress y to run visual demonstration with best evolved controller... ')
+    while x.lower().strip() == 'y':
+
+        print('\n' + '='*60)
+        print('Running visual demonstration with best evolved controller...')
+        print('='*60)
+        
+        from kesslergame import KesslerGame
+        
+        demo_scenario = Scenario(
+            name='Best Controller Demo',
+            num_asteroids=10,
+            ship_states=[
+                {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
+            ],
+            map_size=(700, 500),
+            time_limit=30,
+            ammo_limit_multiplier=0,
+            stop_if_no_ammo=False
+        )
+         
+        demo_settings = {
+            'perf_tracker': True,
+            'graphics_type': GraphicsType.Tkinter,
+            'realtime_multiplier': 1,
+            'graphics_obj': None,
+            'frequency': 30
+        }
+        
+        demo_game = KesslerGame(settings=demo_settings)
+        best_controller = CustomController(chromosome=best_genes)
+        
+        print('\nStarting visual demo...')
+        demo_start = time.time()
+        demo_score, demo_perf = demo_game.run(scenario=demo_scenario, controllers=[best_controller])
+        demo_time = time.time() - demo_start
+        
+        print('\n' + '='*60)
+        print('DEMO RESULTS')
+        print('='*60)
+        print(f'Scenario eval time: {demo_time:.2f}s')
+        print(f'Stop reason: {demo_score.stop_reason}')
+        print(f'Asteroids hit: {demo_score.teams[0].asteroids_hit}')
+        print(f'Deaths: {demo_score.teams[0].deaths}')
+        print(f'Accuracy: {demo_score.teams[0].accuracy:.2%}')
+        print(f'Mean eval time: {demo_score.teams[0].mean_eval_time:.6f}s')
+        print('='*60)
+
+        x = input('Would you like to rerun the visual demonstration? (y/n) ')
+    print('\n=== All Done! ===')
+else:
+    print('\nWarning: Could not retrieve best genes for visual demo')
