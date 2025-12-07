@@ -9,10 +9,7 @@ from pickle import FALSE
 
 # References:
 # https://scikit-fuzzy.readthedocs.io/en/latest/auto_examples/plot_tipping_problem.html
-# https://numpy.org/devdocs/reference/generated/numpy.fmax.html
-# https://medium.com/@amit25173/understanding-element-wise-maximum-in-numpy-43916b1c2002
 # https://www.kaggle.com/code/emineyetm/creating-and-plotting-triangular-fuzzy-membership
-# https://www.geeksforgeeks.org/python/common-operations-on-fuzzy-set-with-example-and-code/
 # Lab 5, Lab 4
 # https://github.com/danielwilczak101/EasyGA
 # https://github.com/ThalesGroup/kessler-game/tree/main
@@ -152,9 +149,8 @@ class CustomController(KesslerController):
         theta_diff['S'] = fuzz.trimf(theta_diff.universe, [-math.pi/3, 0, math.pi/3])
         theta_diff['PM'] = fuzz.trimf(theta_diff.universe, [math.pi/3, math.pi/2, 2*math.pi/3])
         theta_diff['NM'] = fuzz.trimf(theta_diff.universe, [-2*math.pi/3, -math.pi/2, -math.pi/3])
-        theta_diff_PL = fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3)
-        theta_diff_NL = fuzz.smf(theta_diff.universe,  2*math.pi/3, math.pi)
-        theta_diff['L'] = np.maximum(theta_diff_PL, theta_diff_NL)
+        theta_diff['NL'] = fuzz.zmf(theta_diff.universe, -math.pi, -2*math.pi/3)
+        theta_diff['PL'] = fuzz.smf(theta_diff.universe,  2*math.pi/3, math.pi)
 
         ship_thrust['BH'] = fuzz.trimf(ship_thrust.universe, [-1.0, -1.0, -0.75])
         ship_thrust['BM'] = fuzz.trimf(ship_thrust.universe, [-0.7, -0.5, -0.2])
@@ -176,17 +172,17 @@ class CustomController(KesslerController):
         rule8_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['S'], ship_thrust['BL'])
         rule9_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['S'], ship_thrust['BL'])
         
-        rule10_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FH'])
-        rule11_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
-        rule12_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FM'])
+        rule10_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['L'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FH'])
+        rule11_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['M'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FM'])
+        rule12_thrust = ctrl.Rule(asteroid_distance['S'] & asteroid_vel['S'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FM'])
         
-        rule13_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
-        rule14_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FM'])
-        rule15_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
+        rule13_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['L'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FM'])
+        rule14_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['M'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FM'])
+        rule15_thrust = ctrl.Rule(asteroid_distance['M'] & asteroid_vel['S'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FL'])
         
-        rule16_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & theta_diff['L'], ship_thrust['FM'])
-        rule17_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & theta_diff['L'], ship_thrust['FL'])
-        rule18_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & theta_diff['L'], ship_thrust['FL'])
+        rule16_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['L'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FM'])
+        rule17_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['M'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FL'])
+        rule18_thrust = ctrl.Rule(asteroid_distance['L'] & asteroid_vel['S'] & (theta_diff['NL'] | theta_diff['PL']), ship_thrust['FL'])
         
         rule19_thrust = ctrl.Rule(theta_diff['PM'], ship_thrust['BL'])
         rule20_thrust = ctrl.Rule(theta_diff['NM'], ship_thrust['BL'])

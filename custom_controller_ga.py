@@ -9,10 +9,7 @@ from pickle import FALSE
 
 # References:
 # https://scikit-fuzzy.readthedocs.io/en/latest/auto_examples/plot_tipping_problem.html
-# https://numpy.org/devdocs/reference/generated/numpy.fmax.html
-# https://medium.com/@amit25173/understanding-element-wise-maximum-in-numpy-43916b1c2002
 # https://www.kaggle.com/code/emineyetm/creating-and-plotting-triangular-fuzzy-membership
-# https://www.geeksforgeeks.org/python/common-operations-on-fuzzy-set-with-example-and-code/
 # Lab 5, Lab 4
 # https://github.com/danielwilczak101/EasyGA
 # https://github.com/ThalesGroup/kessler-game/tree/main
