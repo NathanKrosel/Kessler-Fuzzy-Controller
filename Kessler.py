@@ -252,6 +252,35 @@ class CustomController(KesslerController):
         self.thrust_movement.addrule(rule19_thrust)
         self.thrust_movement.addrule(rule20_thrust)
 
+        # Mine deployment fuzzy control system
+        mine_distance = ctrl.Antecedent(np.arange(0, 1000, 10), 'mine_distance')
+        rel_speed = ctrl.Antecedent(np.arange(-200, 200, 5), 'rel_speed')
+        mine_decision = ctrl.Consequent(np.arange(0, 1, 0.1), 'mine_decision')
+
+        mine_distance['close'] = fuzz.trimf(mine_distance.universe, [0, 0, 150])
+        mine_distance['medium'] = fuzz.trimf(mine_distance.universe, [100, 200, 300])
+        mine_distance['far'] = fuzz.smf(mine_distance.universe, 250, 500)
+
+        rel_speed['approaching'] = fuzz.smf(rel_speed.universe, 0, 50)
+        rel_speed['neutral'] = fuzz.trimf(rel_speed.universe, [-30, 0, 30])
+        rel_speed['receding'] = fuzz.zmf(rel_speed.universe, -50, 0)
+
+        mine_decision['no'] = fuzz.trimf(mine_decision.universe, [0, 0, 0.5])
+        mine_decision['yes'] = fuzz.smf(mine_decision.universe, 0.3, 0.7)
+
+        mine_rule1 = ctrl.Rule(mine_distance['close'] & rel_speed['approaching'], mine_decision['yes'])
+        mine_rule2 = ctrl.Rule(mine_distance['close'] & rel_speed['neutral'], mine_decision['yes'])
+        mine_rule3 = ctrl.Rule(mine_distance['medium'] & rel_speed['approaching'], mine_decision['yes'])
+        mine_rule4 = ctrl.Rule(mine_distance['far'] | rel_speed['receding'], mine_decision['no'])
+        mine_rule5 = ctrl.Rule(mine_distance['medium'] & rel_speed['neutral'], mine_decision['no'])
+
+        self.mine_control = ctrl.ControlSystem()
+        self.mine_control.addrule(mine_rule1)
+        self.mine_control.addrule(mine_rule2)
+        self.mine_control.addrule(mine_rule3)
+        self.mine_control.addrule(mine_rule4)
+        self.mine_control.addrule(mine_rule5)
+
     @staticmethod
     def scale_theta(val):
         new = (val * 2*math.pi) - math.pi
@@ -411,9 +440,14 @@ class CustomController(KesslerController):
             to_ship_y = ship_pos_y - closest_asteroid["aster"]["position"][1]
             if closest_asteroid["dist"] > 1:
                 rel_speed_val = (closest_asteroid["aster"]["velocity"][0] * to_ship_x + closest_asteroid["aster"]["velocity"][1] * to_ship_y) / closest_asteroid["dist"]
+            
+            # Clamp inputs to fuzzy system universe ranges
+            mine_dist_clamped = max(min(closest_asteroid["dist"], 990), 0)  # [0, 1000]
+            rel_speed_clamped = max(min(rel_speed_val, 195), -195)  # [-200, 200]
+            
             mine_sim = ctrl.ControlSystemSimulation(self.mine_control, flush_after_run=1)
-            mine_sim.input['mine_distance'] = closest_asteroid["dist"]
-            mine_sim.input['rel_speed'] = rel_speed_val
+            mine_sim.input['mine_distance'] = mine_dist_clamped
+            mine_sim.input['rel_speed'] = rel_speed_clamped
             mine_sim.compute()
             mine_score = mine_sim.output.get('mine_decision', 0)
         except Exception:
