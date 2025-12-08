@@ -403,7 +403,7 @@ class CustomController(KesslerController):
 
         self.eval_frames += 1
 
-        return thrust, turn_rate, fire, drop_mine
+        return float(thrust), float(turn_rate), bool(fire), bool(drop_mine)
 
     @property
     def name(self) -> str:
