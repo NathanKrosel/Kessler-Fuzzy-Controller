@@ -104,13 +104,15 @@ class CustomController(KesslerController):
         # --- GA-Optimization: Parsing the Chromosome (54 Genes Total) ---
         default_full = np.zeros(54)
         # asteroid_distance (8 genes)
-        default_full[0:8] = [0, 0.1, 0.2, 0.175, 0.400, 0.750, 0.600, 1.0]
+        #default_full[0:8] = [0, 0.1, 0.2, 0.175, 0.400, 0.750, 0.600, 1.0]
         # asteroid_vel (7 genes)
-        default_full[8:15] = [0, 0.05, 0.11, 0.075, 0.15, 0.225, 0.15]
+        #default_full[8:15] = [0, 0.05, 0.11, 0.075, 0.15, 0.225, 0.15]
+        default_full[0:15] = [0.25799733442947226, 0.4348225347449092, 0.051987190185516785, 0.8265068016063567, 0.07791006900904318, 0.7671644117244094, 0.5993331573412217, 0.5923683459835514, 0.560794922527841, 0.752126262551157, 0.1168466882678284, 0.5707511918846604, 0.2927461837192492, 0.1380396820584182, 0.533745603804345]
+        
         # theta_diff (13 genes)
         default_full[15:28] = [0.33, 0.5, 0.67, 0.67, 0.75, 0.83, 0.17, 0.25, 0.33, 0, 0.167, 0.83, 1]
         # ship_thrust (9 genes)
-        default_full[28:37] = [0.0, 0.1, 0.3, 0.2, 0.5, 0.7, 0.75, 0.9, 1.0]
+        default_full[28:37] = [0.2, 0.4, 0.6, 0.4, 0.6, 0.8, 0.7, 0.9, 1.0]
         # mine_distance (6 genes) - ADJUSTED DEFAULTS
         default_full[37:43] = [0, 0.1, 0.2, 0.3, 0.5, 0.8]
         # mine_asteroid_vel (6 genes)
@@ -338,7 +340,7 @@ class CustomController(KesslerController):
         if np.isnan(thrust_raw):
             thrust_raw = 0.0
 
-        thrust = thrust_raw * 250
+        thrust = thrust_raw * 350
 
 
         # --- Mine Logic (FIXED!) ---
@@ -431,7 +433,7 @@ def fitness(chromosome):
             {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
         ],
         map_size=(1000, 800),
-        time_limit=20,
+        time_limit=25,
         ammo_limit_multiplier=0,
         stop_if_no_ammo=False)
     
@@ -452,8 +454,13 @@ def fitness(chromosome):
     accuracy = score.teams[0].accuracy
     deaths = score.teams[0].deaths
     
-    survival_bonus = (3 - deaths) * 50
-    result = asteroids_hit * 10 + accuracy * 100 + survival_bonus - deaths * 100
+    survival_time = score.sim_time  # Time survived in seconds
+    
+    result = (asteroids_hit * 100 + 
+          (3 - deaths) * 150 +
+          survival_time * 3 +
+          accuracy * 30 -
+          deaths * 250)        
 
     return result
 
@@ -468,6 +475,8 @@ ga.target_fitness_type = 'max'
 ga.generation_goal = 30
 ga.fitness_function_impl = fitness
 ga.gene_impl = lambda: gene_generation()
+ga.selection_rate = 0.3
+ga.mutation_rate = 0.15
 
 ga.database_name = ""
 print('Starting GA Evolution...')
