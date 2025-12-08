@@ -460,87 +460,88 @@ def fitness(chromosome):
 def gene_generation():
     return random.uniform(0, 1)
 
-# --- EasyGA Initialization ---
-ga = EasyGA.GA()
-ga.chromosome_length = 54
-ga.population_size = 15
-ga.target_fitness_type = 'max'
-ga.generation_goal = 30
-ga.fitness_function_impl = fitness
-ga.gene_impl = lambda: gene_generation()
+def main():
+    # --- EasyGA Initialization ---
+    ga = EasyGA.GA()
+    ga.chromosome_length = 54
+    ga.population_size = 15
+    ga.target_fitness_type = 'max'
+    ga.generation_goal = 30
+    ga.fitness_function_impl = fitness
+    ga.gene_impl = lambda: gene_generation()
 
-ga.database_name = ""
-print('Starting GA Evolution...')
-print(f'Population: {ga.population_size}, Generations: {ga.generation_goal}, Chromosome Length: {ga.chromosome_length}')
-ga.evolve()
-print('\n=== Evolution Complete ===')
-ga.print_best_chromosome()
+    ga.database_name = ""
+    print('Starting GA Evolution...')
+    print(f'Population: {ga.population_size}, Generations: {ga.generation_goal}, Chromosome Length: {ga.chromosome_length}')
+    ga.evolve()
+    print('\n=== Evolution Complete ===')
+    ga.print_best_chromosome()
 
-best_genes = None
-try:
-    if hasattr(ga, 'best_chromosome'):
-        print(f'\nBest Fitness: {ga.best_chromosome.fitness}')
-        best_genes = [gene.value for gene in ga.best_chromosome]
-    elif hasattr(ga, 'population') and len(ga.population) > 0:
-        best = max(ga.population, key=lambda x: x.fitness)
-        print(f'\nBest Fitness: {best.fitness}')
-        best_genes = [gene.value for gene in best]
-except Exception as e:
-    print(f'\nCould not retrieve best fitness: {e}')
+    best_genes = None
+    try:
+        if hasattr(ga, 'best_chromosome'):
+            print(f'\nBest Fitness: {ga.best_chromosome.fitness}')
+            best_genes = [gene.value for gene in ga.best_chromosome]
+        elif hasattr(ga, 'population') and len(ga.population) > 0:
+            best = max(ga.population, key=lambda x: x.fitness)
+            print(f'\nBest Fitness: {best.fitness}')
+            best_genes = [gene.value for gene in best]
+    except Exception as e:
+        print(f'\nCould not retrieve best fitness: {e}')
 
-# =================================================================
-# VISUAL DEMONSTRATION WITH BEST CHROMOSOME
-# =================================================================
-if best_genes is not None:
-    x = input('\nPress y to run visual demonstration with best evolved controller... ')
-    while x.lower().strip() == 'y':
+    # =================================================================
+    # VISUAL DEMONSTRATION WITH BEST CHROMOSOME
+    # =================================================================
+    if best_genes is not None:
+        x = input('\nPress y to run visual demonstration with best evolved controller... ')
+        while x.lower().strip() == 'y':
 
-        print('\n' + '='*60)
-        print('Running visual demonstration with best evolved controller...')
-        print('='*60)
-        
-        from kesslergame import KesslerGame
-        
-        demo_scenario = Scenario(
-            name='Best Controller Demo',
-            num_asteroids=10,
-            ship_states=[
-                {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
-            ],
-            map_size=(700, 500),
-            time_limit=30,
-            ammo_limit_multiplier=0,
-            stop_if_no_ammo=False
-        )
-         
-        demo_settings = {
-            'perf_tracker': True,
-            'graphics_type': GraphicsType.Tkinter,
-            'realtime_multiplier': 1,
-            'graphics_obj': None,
-            'frequency': 30
-        }
-        
-        demo_game = KesslerGame(settings=demo_settings)
-        best_controller = CustomController(chromosome=best_genes)
-        
-        print('\nStarting visual demo...')
-        demo_start = time.time()
-        demo_score, demo_perf = demo_game.run(scenario=demo_scenario, controllers=[best_controller])
-        demo_time = time.time() - demo_start
-        
-        print('\n' + '='*60)
-        print('DEMO RESULTS')
-        print('='*60)
-        print(f'Scenario eval time: {demo_time:.2f}s')
-        print(f'Stop reason: {demo_score.stop_reason}')
-        print(f'Asteroids hit: {demo_score.teams[0].asteroids_hit}')
-        print(f'Deaths: {demo_score.teams[0].deaths}')
-        print(f'Accuracy: {demo_score.teams[0].accuracy:.2%}')
-        print(f'Mean eval time: {demo_score.teams[0].mean_eval_time:.6f}s')
-        print('='*60)
+            print('\n' + '='*60)
+            print('Running visual demonstration with best evolved controller...')
+            print('='*60)
+            
+            from kesslergame import KesslerGame
+            
+            demo_scenario = Scenario(
+                name='Best Controller Demo',
+                num_asteroids=10,
+                ship_states=[
+                    {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
+                ],
+                map_size=(700, 500),
+                time_limit=30,
+                ammo_limit_multiplier=0,
+                stop_if_no_ammo=False
+            )
+            
+            demo_settings = {
+                'perf_tracker': True,
+                'graphics_type': GraphicsType.Tkinter,
+                'realtime_multiplier': 1,
+                'graphics_obj': None,
+                'frequency': 30
+            }
+            
+            demo_game = KesslerGame(settings=demo_settings)
+            best_controller = CustomController(chromosome=best_genes)
+            
+            print('\nStarting visual demo...')
+            demo_start = time.time()
+            demo_score, demo_perf = demo_game.run(scenario=demo_scenario, controllers=[best_controller])
+            demo_time = time.time() - demo_start
+            
+            print('\n' + '='*60)
+            print('DEMO RESULTS')
+            print('='*60)
+            print(f'Scenario eval time: {demo_time:.2f}s')
+            print(f'Stop reason: {demo_score.stop_reason}')
+            print(f'Asteroids hit: {demo_score.teams[0].asteroids_hit}')
+            print(f'Deaths: {demo_score.teams[0].deaths}')
+            print(f'Accuracy: {demo_score.teams[0].accuracy:.2%}')
+            print(f'Mean eval time: {demo_score.teams[0].mean_eval_time:.6f}s')
+            print('='*60)
 
-        x = input('Would you like to rerun the visual demonstration? (y/n) ')
-    print('\n=== All Done! ===')
-else:
-    print('\nWarning: Could not retrieve best genes for visual demo')
+            x = input('Would you like to rerun the visual demonstration? (y/n) ')
+        print('\n=== All Done! ===')
+    else:
+        print('\nWarning: Could not retrieve best genes for visual demo')
