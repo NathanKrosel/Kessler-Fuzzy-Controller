@@ -368,7 +368,7 @@ class CustomController(KesslerController):
                     mine_sim.compute()
                     mine_output = mine_sim.output.get('mine_deploy', -1)
                 except Exception as e:
-                    print(f"Mine fuzzy error: {e}")
+                    #print(f"Mine fuzzy error: {e}")
                     mine_output = -1
                 if np.isnan(mine_output):
                     mine_output = -1
@@ -377,7 +377,7 @@ class CustomController(KesslerController):
                 if mine_output >= self.mine_threshold:
                     drop_mine = True
                     self.last_mine_frame = self.eval_frames
-                    print(f"MINE DROPPED! Distance: {closest_asteroid['dist']:.1f}, Vel: {asteroid_vel:.1f}, Alignment: {math.degrees(alignment_angle):.1f}°, Output: {mine_output:.2f}")
+                    #print(f"MINE DROPPED! Distance: {closest_asteroid['dist']:.1f}, Vel: {asteroid_vel:.1f}, Alignment: {math.degrees(alignment_angle):.1f}°, Output: {mine_output:.2f}")
              
         # Escape logic after mine drop
         if frames_since_last_mine < 30:
@@ -413,7 +413,7 @@ def fitness(chromosome):
     chromosome = [gene.value for gene in chromosome]
 
     my_test_scenario = Scenario(name='Test Scenario',
-        num_asteroids=5,
+        num_asteroids=10,
         ship_states=[
             {'position': (400, 400), 'angle': 90, 'lives': 3, 'team': 1, "mines_remaining": 3},
         ],
@@ -450,11 +450,9 @@ def gene_generation():
 # --- EasyGA Initialization ---
 ga = EasyGA.GA()
 ga.chromosome_length = 54
-ga.population_size = 4
+ga.population_size = 15
 ga.target_fitness_type = 'max'
-ga.generation_goal = 2
-ga.selection_rate = 0.5
-ga.mutation_rate = 0.1
+ga.generation_goal = 30
 ga.fitness_function_impl = fitness
 ga.gene_impl = lambda: gene_generation()
 
