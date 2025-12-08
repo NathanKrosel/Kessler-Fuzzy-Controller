@@ -1,3 +1,10 @@
+# References:
+# https://scikit-fuzzy.readthedocs.io/en/latest/auto_examples/plot_tipping_problem.html
+# https://www.kaggle.com/code/emineyetm/creating-and-plotting-triangular-fuzzy-membership
+# ECE 449 Lab 5, Lab 4
+# https://github.com/danielwilczak101/EasyGA
+# https://github.com/ThalesGroup/kessler-game/tree/main
+
 import math
 import random
 import time
