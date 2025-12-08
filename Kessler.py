@@ -343,8 +343,14 @@ class CustomController(KesslerController):
 
         # --- Mine Logic (FIXED!) ---
         drop_mine = False
-        can_deploy = ship_state.get("can_deploy_mine", False)
-        mines_remaining = ship_state.get("mines_remaining", 0)
+        try:
+            can_deploy = ship_state["can_deploy_mine"]
+        except (KeyError, TypeError):
+            can_deploy = False
+        try:
+            mines_remaining = ship_state["mines_remaining"]
+        except (KeyError, TypeError):
+            mines_remaining = 0
         frames_since_last_mine = self.eval_frames - self.last_mine_frame
         mine_cooldown_ready = frames_since_last_mine > 90
         
